@@ -1,5 +1,4 @@
 /*
-
   MyFS: a tiny file-system written for educational purposes
 
   MyFS is 
@@ -26,7 +25,6 @@
   See the file COPYING.
 
   gcc -Wall myfs.c implementation.c `pkg-config fuse --cflags --libs` -o myfs
-
 */
 
 #include <stddef.h>
@@ -41,7 +39,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
-
 
 /* The filesystem you implement must support all the 13 operations
    stubbed out below. There need not be support for access rights,
@@ -232,7 +229,6 @@
 
    (18)  Run some heavy testing: copy your favorite movie into your
          filesystem and try to watch it out of the filesystem.
-
 */
 
 /* Helper types and functions */
@@ -265,11 +261,9 @@
    st_size     (supported only for files, where it is the real file size)
    st_atim
    st_mtim
-
 */
-int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
-                          uid_t uid, gid_t gid,
-                          const char *path, struct stat *stbuf) {
+int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, gid_t gid, const char *path, struct stat *stbuf)
+{
   /* STUB */
   return -1;
 }
@@ -308,10 +302,9 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
 
    In the case memory allocation with malloc/calloc fails, failure is
    indicated by returning -1 and setting *errnoptr to EINVAL.
-
 */
-int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr,
-                          const char *path, char ***namesptr) {
+int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char ***namesptr)
+{
   /* STUB */
   return -1;
 }
@@ -331,10 +324,9 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr,
    On failure, -1 is returned and *errnoptr is set appropriately.
 
    The error codes are documented in man 2 mknod.
-
 */
-int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr,
-                        const char *path) {
+int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
+{
   /* STUB */
   return -1;
 }
@@ -349,10 +341,9 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr,
    On failure, -1 is returned and *errnoptr is set appropriately.
 
    The error codes are documented in man 2 unlink.
-
 */
-int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr,
-                        const char *path) {
+int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
+{
   /* STUB */
   return -1;
 }
@@ -370,10 +361,9 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr,
    not empty (if there are files or subdirectories other than . and ..).
 
    The error codes are documented in man 2 rmdir.
-
 */
-int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr,
-                        const char *path) {
+int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
+{
   /* STUB */
   return -1;
 }
@@ -388,10 +378,10 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr,
    On failure, -1 is returned and *errnoptr is set appropriately.
 
    The error codes are documented in man 2 mkdir.
-
 */
-int __myfs_mkdir_implem(void *fsptr, size_t fssize, int *errnoptr,
-                        const char *path) {
+
+int __myfs_mkdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
+{
   /* STUB */
   return -1;
 }
@@ -410,10 +400,9 @@ int __myfs_mkdir_implem(void *fsptr, size_t fssize, int *errnoptr,
    the from path and added to the to path.
 
    The error codes are documented in man 2 rename.
-
 */
-int __myfs_rename_implem(void *fsptr, size_t fssize, int *errnoptr,
-                         const char *from, const char *to) {
+int __myfs_rename_implem(void *fsptr, size_t fssize, int *errnoptr, const char *from, const char *to)
+{
   /* STUB */
   return -1;
 }
@@ -432,10 +421,9 @@ int __myfs_rename_implem(void *fsptr, size_t fssize, int *errnoptr,
    On failure, -1 is returned and *errnoptr is set appropriately.
 
    The error codes are documented in man 2 truncate.
-
 */
-int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr,
-                           const char *path, off_t offset) {
+int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, off_t offset)
+{
   /* STUB */
   return -1;
 }
@@ -464,10 +452,9 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr,
    condition answers.
 
    The error codes are documented in man 2 open.
-
 */
-int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr,
-                       const char *path) {
+int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
+{
   /* STUB */
   return -1;
 }
@@ -485,10 +472,9 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr,
    On failure, -1 is returned and *errnoptr is set appropriately.
 
    The error codes are documented in man 2 read.
-
 */
-int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr,
-                       const char *path, char *buf, size_t size, off_t offset) {
+int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char *buf, size_t size, off_t offset)
+{
   /* STUB */
   return -1;
 }
@@ -506,10 +492,9 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr,
    On failure, -1 is returned and *errnoptr is set appropriately.
 
    The error codes are documented in man 2 write.
-
 */
-int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr,
-                        const char *path, const char *buf, size_t size, off_t offset) {
+int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const char *buf, size_t size, off_t offset)
+{
   /* STUB */
   return -1;
 }
@@ -525,10 +510,9 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr,
    On failure, -1 is returned and *errnoptr is set appropriately.
 
    The error codes are documented in man 2 utimensat.
-
 */
-int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr,
-                          const char *path, const struct timespec ts[2]) {
+int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const struct timespec ts[2])
+{
   /* STUB */
   return -1;
 }
@@ -554,10 +538,9 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr,
    f_bavail  fill with same value as f_bfree
    f_namemax fill with your maximum file/directory name, if your
              filesystem has such a maximum
-
 */
-int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr,
-                         struct statvfs* stbuf) {
+int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statvfs* stbuf)
+{
   /* STUB */
   return -1;
 }

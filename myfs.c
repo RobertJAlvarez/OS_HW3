@@ -1,5 +1,4 @@
 /*
-
   MyFS: a tiny file-system written for educational purposes
 
   MyFS is 
@@ -37,7 +36,6 @@
   YOU TO DO SO). 
 
   ALL YOUR CODE GOES INTO implementation.c !!!
-  
 */
 
 #define FUSE_USE_VERSION 26
@@ -55,27 +53,27 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-
 struct __myfs_options_struct_t {
-        const char *filename;
-        const char *size;
-        int show_help;
+  const char *filename;
+  const char *size;
+  int show_help;
 };
 
 #define OPTION(t, p)  { t, offsetof(struct __myfs_options_struct_t, p), 1 }
 
 static const struct fuse_opt __myfs_option_spec[] = {
-        OPTION("--backupfile=%s", filename),
-        OPTION("--size=%s", size),
-        OPTION("-h", show_help),
-        OPTION("--help", show_help),
-        FUSE_OPT_END
+  OPTION("--backupfile=%s", filename),
+  OPTION("--size=%s", size),
+  OPTION("-h", show_help),
+  OPTION("--help", show_help),
+  FUSE_OPT_END
 };
 
 struct __memory_block_struct_t {
   size_t size;
   size_t next;
 };
+
 typedef struct __memory_block_struct_t memory_block_t;
 
 struct __myfs_environment_struct_t {
@@ -88,8 +86,8 @@ struct __myfs_environment_struct_t {
   int             backup_fd;
 };
 
-#define MYFS_DEFAULT_SIZE  ((size_t) (128 << 20))   /* 128MB */
-#define MYFS_MIN_SIZE      ((size_t) (2048))        /* 2kB */
+#define MYFS_DEFAULT_SIZE  ((size_t) (128 << 20)) /* 128MB */
+#define MYFS_MIN_SIZE      ((size_t) (2048))      /* 2kB */
 
 static int __myfs_parse_size(size_t *size, const char *str) {
   unsigned long long int tmp, t;
@@ -129,7 +127,7 @@ static int __myfs_setup_environment(struct __myfs_environment_struct_t *env, str
     size_specified = 0;
     size = MYFS_DEFAULT_SIZE;
   }
-  
+
   /* Make sure size is at least the minimum size */
   if (size < MYFS_MIN_SIZE) {
     size = MYFS_MIN_SIZE;
@@ -140,7 +138,7 @@ static int __myfs_setup_environment(struct __myfs_environment_struct_t *env, str
     perror("Cannot setup mutex");
     return 0;    
   }
-  
+
   /* Handle backup file */
   if (opts->filename != NULL) {
     using_backup = 1;
@@ -230,7 +228,7 @@ static int __myfs_setup_environment(struct __myfs_environment_struct_t *env, str
       }
     }
   }
-  
+
   /* Get uid and gid, write back and succeed */
   env->uid = getuid();
   env->gid = getgid();
@@ -241,7 +239,8 @@ static int __myfs_setup_environment(struct __myfs_environment_struct_t *env, str
   return 1;
 }
 
-static void __myfs_clear_environment(struct __myfs_environment_struct_t *env) {
+static void __myfs_clear_environment(struct __myfs_environment_struct_t *env)
+{
   if (env->using_backup) {
     if (msync(env->memory, env->size, MS_SYNC) != 0) {
       perror("Cannot synchronize memory map with backup-file");
@@ -260,7 +259,8 @@ static void __myfs_clear_environment(struct __myfs_environment_struct_t *env) {
   }
 }
 
-static int __myfs_sync_environment(struct __myfs_environment_struct_t *env) {
+static int __myfs_sync_environment(struct __myfs_environment_struct_t *env)
+{
   if (env == NULL) return -1;
   if (!(env->using_backup)) return 0;
   if (msync(env->memory, env->size, MS_SYNC) != 0) return -1;
@@ -288,7 +288,8 @@ int __myfs_utimens_implem(void *, size_t, int *, const char *, const struct time
 
 /* FUSE operations part */
 
-static int __myfs_getattr(const char *path, struct stat *st) {
+static int __myfs_getattr(const char *path, struct stat *st)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -297,24 +298,18 @@ static int __myfs_getattr(const char *path, struct stat *st) {
   env = (struct __myfs_environment_struct_t *) (context->private_data);
 
   memset(st, 0, sizeof(struct stat));
-  
+
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_getattr_implem(env->memory,
-                              env->size,
-                              &__myfs_errno,
-                              env->uid,
-                              env->gid,
-                              path,
-                              st);
+  res = __myfs_getattr_implem(env->memory, env->size, &__myfs_errno, env->uid, env->gid, path, st);
   pthread_mutex_unlock(&(env->env_lock));  
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                          off_t offset, struct fuse_file_info *fi) {
+static int __myfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res, i;
@@ -329,11 +324,7 @@ static int __myfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   names = NULL;
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_readdir_implem(env->memory,
-                              env->size,
-                              &__myfs_errno,
-                              path,
-                              &names);
+  res = __myfs_readdir_implem(env->memory, env->size, &__myfs_errno, path, &names);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0) {
     if (res == 0) {
@@ -358,7 +349,8 @@ static int __myfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   return -__myfs_errno;
 }
 
-static int __myfs_mknod(const char* path, mode_t mode, dev_t dev) {
+static int __myfs_mknod(const char* path, mode_t mode, dev_t dev)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -372,17 +364,15 @@ static int __myfs_mknod(const char* path, mode_t mode, dev_t dev) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_mknod_implem(env->memory,
-                            env->size,
-                            &__myfs_errno,
-                            path);
+  res = __myfs_mknod_implem(env->memory, env->size, &__myfs_errno, path);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_unlink(const char* path) {
+static int __myfs_unlink(const char* path)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -392,17 +382,15 @@ static int __myfs_unlink(const char* path) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_unlink_implem(env->memory,
-                             env->size,
-                             &__myfs_errno,
-                             path);
+  res = __myfs_unlink_implem(env->memory, env->size, &__myfs_errno, path);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_mkdir(const char* path, mode_t mode) {
+static int __myfs_mkdir(const char* path, mode_t mode)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -412,17 +400,15 @@ static int __myfs_mkdir(const char* path, mode_t mode) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_mkdir_implem(env->memory,
-                            env->size,
-                            &__myfs_errno,
-                            path);
+  res = __myfs_mkdir_implem(env->memory, env->size, &__myfs_errno, path);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_rmdir(const char* path) {
+static int __myfs_rmdir(const char* path)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -432,17 +418,15 @@ static int __myfs_rmdir(const char* path) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_rmdir_implem(env->memory,
-                            env->size,
-                            &__myfs_errno,
-                            path);
+  res = __myfs_rmdir_implem(env->memory, env->size, &__myfs_errno, path);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_rename(const char* from, const char* to) {
+static int __myfs_rename(const char* from, const char* to)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -452,18 +436,15 @@ static int __myfs_rename(const char* from, const char* to) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_rename_implem(env->memory,
-                             env->size,
-                             &__myfs_errno,
-                             from,
-                             to);
+  res = __myfs_rename_implem(env->memory, env->size, &__myfs_errno, from, to);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_truncate(const char* path, off_t size) {
+static int __myfs_truncate(const char* path, off_t size)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -473,18 +454,15 @@ static int __myfs_truncate(const char* path, off_t size) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_truncate_implem(env->memory,
-                               env->size,
-                               &__myfs_errno,
-                               path,
-                               size);
+  res = __myfs_truncate_implem(env->memory, env->size, &__myfs_errno, path, size);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_open(const char* path, struct fuse_file_info* fi) {
+static int __myfs_open(const char* path, struct fuse_file_info* fi)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -499,17 +477,15 @@ static int __myfs_open(const char* path, struct fuse_file_info* fi) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_open_implem(env->memory,
-                           env->size,
-                           &__myfs_errno,
-                           path);
+  res = __myfs_open_implem(env->memory, env->size, &__myfs_errno, path);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi) {
+static int __myfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -521,20 +497,15 @@ static int __myfs_read(const char* path, char *buf, size_t size, off_t offset, s
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_read_implem(env->memory,
-                           env->size,
-                           &__myfs_errno,
-                           path,
-                           buf,
-                           size,
-                           offset);
+  res = __myfs_read_implem(env->memory, env->size, &__myfs_errno, path, buf, size, offset);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_write(const char* path, const char *buf, size_t size, off_t offset, struct fuse_file_info* fi) {
+static int __myfs_write(const char* path, const char *buf, size_t size, off_t offset, struct fuse_file_info* fi)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -546,20 +517,15 @@ static int __myfs_write(const char* path, const char *buf, size_t size, off_t of
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_write_implem(env->memory,
-                            env->size,
-                            &__myfs_errno,
-                            path,
-                            buf,
-                            size,
-                            offset);
+  res = __myfs_write_implem(env->memory, env->size, &__myfs_errno, path, buf, size, offset);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_statfs(const char* path, struct statvfs* stbuf) {
+static int __myfs_statfs(const char* path, struct statvfs* stbuf)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -573,17 +539,15 @@ static int __myfs_statfs(const char* path, struct statvfs* stbuf) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_statfs_implem(env->memory,
-                             env->size,
-                             &__myfs_errno,
-                             stbuf);
+  res = __myfs_statfs_implem(env->memory, env->size, &__myfs_errno, stbuf);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_utimens(const char* path, const struct timespec ts[2]) {
+static int __myfs_utimens(const char* path, const struct timespec ts[2])
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -593,18 +557,15 @@ static int __myfs_utimens(const char* path, const struct timespec ts[2]) {
   
   __myfs_errno = ENOENT;
   pthread_mutex_lock(&(env->env_lock));
-  res = __myfs_utimens_implem(env->memory,
-                              env->size,
-                              &__myfs_errno,
-                              path,
-                              ts);
+  res = __myfs_utimens_implem(env->memory, env->size, &__myfs_errno, path, ts);
   pthread_mutex_unlock(&(env->env_lock));
   if (res >= 0)
     return res;
   return -__myfs_errno;
 }
 
-static int __myfs_fsync(const char *path, int datasync, struct fuse_file_info *fi) {
+static int __myfs_fsync(const char *path, int datasync, struct fuse_file_info *fi)
+{
   struct fuse_context *context;
   struct __myfs_environment_struct_t *env;
   int __myfs_errno, res;
@@ -625,7 +586,8 @@ static int __myfs_fsync(const char *path, int datasync, struct fuse_file_info *f
   return -__myfs_errno;  
 }
 
-static void __myfs_destroy(void *private_data) {
+static void __myfs_destroy(void *private_data)
+{
   struct __myfs_environment_struct_t *env;
   
   if (private_data == NULL) return;
@@ -633,7 +595,8 @@ static void __myfs_destroy(void *private_data) {
   __myfs_clear_environment(env);
 }
 
-static struct fuse_operations __myfs_operations = {
+static struct fuse_operations __myfs_operations =
+{
   .getattr = __myfs_getattr,
   .readdir = __myfs_readdir,
   .mkdir = __myfs_mkdir,
@@ -653,23 +616,25 @@ static struct fuse_operations __myfs_operations = {
 
 /* End of FUSE operations part */
 
-static void __myfs_show_help(const char *name) {
-        printf("usage: %s [options] <mountpoint>\n\n", name);
-        printf("File-system specific options:\n"
-               "    --backupfile=<s>        File to read file-system content from and save to\n"
-               "                            Default: none, all changes are lost\n"
-               "    --size=<s>              Size of the file system\n"
-               "                            Default: 128MB if no backup-file is given.\n"
-               "                                     Size of the backup-file otherwise.\n"
-               "                            If both a backup-file and a size are specified,\n"
-               "                            the actual size is the maximum of the size of the\n"
-               "                            backup-file and the size specified.\n"
-               "                            The minimum size of a filesystem is 2kB. If a\n"
-               "                            lesser size is used, it is increased to 2kB.\n"
-               "\n");
+static void __myfs_show_help(const char *name)
+{
+  printf("usage: %s [options] <mountpoint>\n\n", name);
+  printf("File-system specific options:\n"
+  "  --backupfile=<s>  File to read file-system content from and save to\n"
+  "                    Default: none, all changes are lost\n"
+  "  --size=<s>        Size of the file system\n"
+  "                    Default: 128MB if no backup-file is given.\n"
+  "                             Size of the backup-file otherwise.\n"
+  "                    If both a backup-file and a size are specified,\n"
+  "                    the actual size is the maximum of the size of the\n"
+  "                    backup-file and the size specified.\n"
+  "                    The minimum size of a filesystem is 2kB. If a\n"
+  "                    lesser size is used, it is increased to 2kB.\n"
+  "\n");
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
   struct __myfs_options_struct_t __myfs_options;
   struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
   struct __myfs_environment_struct_t __myfs_environment;
@@ -700,3 +665,4 @@ int main(int argc, char *argv[]) {
   
   return fuse_main(args.argc, args.argv, &__myfs_operations, env_ptr);
 }
+
