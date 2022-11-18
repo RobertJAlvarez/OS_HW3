@@ -39,6 +39,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
+#include "implementation.h"
 
 /* The filesystem you implement must support all the 13 operations
    stubbed out below. There need not be support for access rights,
@@ -136,7 +137,7 @@
          (sub-)directories.  You need to store the location of the
          root directory in a "global" variable that, again, goes into the 
          handle designed at step (1).
-          
+
    (4)   Write __myfs_getattr_implem and debug it thoroughly, as best as
          you can with a filesystem that is reduced to one
          function. Writing this function will make you write helper
@@ -231,15 +232,64 @@
          filesystem and try to watch it out of the filesystem.
 */
 
-/* Helper types and functions */
+/* HELPER TYPES AND STRUCTS GO HERE */
+
+typedef size_t __off_t;
+
+typedef struct file_block_struct_t {
+  size_t size;
+  size_t allocated;
+  __off_t data;
+} file_block_t;
+
+typedef struct __inode_file_t {
+  size_t total_size;
+  __off_t blocks;  //This is an offset to an array of file_block_struct
+} file_t;
+
+typedef struct __inode_directory_t {
+  size_t number_children;
+  __off_t children; //This is an offset to an array of offsets to folders
+} directory_t;
+
+typedef struct __inode_t {
+  char name[256];
+  char is_file;
+  struct {
+    unsigned int second : 5;  //Do << 1 for a range max of 62
+    unsigned int minute : 6;  //0 < minutes < 63
+    unsigned int hour : 5;    //0 < hour < 31
+    unsigned int day : 5;     //0 < day < 31
+    unsigned int month : 4;   //0 < month < 15
+    unsigned int year : 7;   //1970 < year < 1970 + 127 = 2107 2147483647
+  } time;
+  union {
+    file_t file;
+    directory_t directory;
+  } type;
+} node_t;
+
+/* End of types and structs */
 
 /* YOUR HELPER FUNCTIONS GO HERE */
+void print_sizeof_struct()
+{
+  node_t node;
+
+  printf("sizeof(file_block_t) = %zu\n", sizeof(file_block_t));
+  printf("sizeof(file_t) = %zu\n", sizeof(file_t));
+  printf("sizeof(directory_t) = %zu\n", sizeof(directory_t));
+  printf("sizeof(node_t) = %zu\n", sizeof(node_t));
+  printf("sizeof(node.time) = %zu\n", sizeof(node.time));
+  printf("sizeof(node.type) = %zu\n", sizeof(node.type));
+  printf("sizeof(char) = %zu\n", sizeof(char));
+}
 
 /* End of helper functions */
 
 /* Implements an emulation of the stat system call on the filesystem 
    of size fssize pointed to by fsptr. 
-   
+
    If path can be followed and describes a file or directory 
    that exists and is accessable, the access information is 
    put into stbuf. 
