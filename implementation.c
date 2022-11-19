@@ -240,11 +240,12 @@ typedef struct file_block_struct_t {
   size_t size;
   size_t allocated;
   __off_t data;
+  __off_t next_file_block;
 } file_block_t;
 
 typedef struct __inode_file_t {
   size_t total_size;
-  __off_t blocks;  //This is an offset to an array of file_block_struct
+  __off_t first_file_block;  //This is an offset to the first file_block_t
 } file_t;
 
 typedef struct __inode_directory_t {
@@ -258,7 +259,7 @@ typedef struct __times_t {
   unsigned int hour : 5;    //0 < hour < 31
   unsigned int day : 5;     //0 < day < 31
   unsigned int month : 4;   //0 < month < 15
-  unsigned int year : 7;    //1970 < year < 1970 + 127 = 2107 2147483647
+  unsigned int year : 7;    //1970 < year < 1970 + 127 = 2107
 } times_t;
 
 typedef struct __inode_t {
