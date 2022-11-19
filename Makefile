@@ -1,7 +1,7 @@
 CC     = gcc
 OBJS   = main.o
 # -W* for warnings, -g3 for maximum debug, -O3 for maximum optimization
-CFLAGS = -Wall -Wextra -Wundef -Wshadow -Wwrite-strings -Wcast-align -Wstrict-prototypes -Waggregate-return -Wpointer-arith -Wcast-equal \
+CFLAGS = -Wall -Wextra -Wundef -Wshadow -Wwrite-strings -Wcast-align -Wstrict-prototypes -Waggregate-return -Wpointer-arith -Wcast-qual \
          -Wswitch-default -Wswitch-enum -Wconversion -Wunreachable-code -Wfloat-equal -Wno-visibility -Wno-unused-parameter -g3 -O3
 
 all: main

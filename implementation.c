@@ -252,17 +252,19 @@ typedef struct __inode_directory_t {
   __off_t children; //This is an offset to an array of offsets to folders
 } directory_t;
 
+typedef struct __times_t {
+  unsigned int second : 5;  //Do << 1 for a range max of 62
+  unsigned int minute : 6;  //0 < minutes < 63
+  unsigned int hour : 5;    //0 < hour < 31
+  unsigned int day : 5;     //0 < day < 31
+  unsigned int month : 4;   //0 < month < 15
+  unsigned int year : 7;    //1970 < year < 1970 + 127 = 2107 2147483647
+} times_t;
+
 typedef struct __inode_t {
   char name[256];
   char is_file;
-  struct {
-    unsigned int second : 5;  //Do << 1 for a range max of 62
-    unsigned int minute : 6;  //0 < minutes < 63
-    unsigned int hour : 5;    //0 < hour < 31
-    unsigned int day : 5;     //0 < day < 31
-    unsigned int month : 4;   //0 < month < 15
-    unsigned int year : 7;   //1970 < year < 1970 + 127 = 2107 2147483647
-  } time;
+  times_t times[2]; //times[0]: creation date, times[1]: last modification date
   union {
     file_t file;
     directory_t directory;
@@ -274,15 +276,20 @@ typedef struct __inode_t {
 /* YOUR HELPER FUNCTIONS GO HERE */
 void print_sizeof_struct()
 {
-  node_t node;
-
+  printf("Structs:\n");
   printf("sizeof(file_block_t) = %zu\n", sizeof(file_block_t));
   printf("sizeof(file_t) = %zu\n", sizeof(file_t));
   printf("sizeof(directory_t) = %zu\n", sizeof(directory_t));
+  printf("sizeof(times_t) = %zu\n", sizeof(times_t));
   printf("sizeof(node_t) = %zu\n", sizeof(node_t));
-  printf("sizeof(node.time) = %zu\n", sizeof(node.time));
+
+  printf("\nNode attribute:\n");
+  node_t node;
+
+  printf("sizeof(node.name) = %zu\n", sizeof(node.name));
+  printf("sizeof(node.is_file) = %zu\n", sizeof(node.is_file));
+  printf("sizeof(node.times) = %zu\n", sizeof(node.times));
   printf("sizeof(node.type) = %zu\n", sizeof(node.type));
-  printf("sizeof(char) = %zu\n", sizeof(char));
 }
 
 /* End of helper functions */
