@@ -513,8 +513,13 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 */
 int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  /* STUB */
-  return -1;
+  node_t *node = path_solver(path, errnoptr);
+  // Checks if path is valid, if not valid return -1
+  if (node == NULL) {
+    return -1;
+  }
+  //Checks if node is a file, if it is a file return 0
+  return node->is_file ? 0 : -1;
 }
 
 /* Implements an emulation of the read system call on the filesystem 
