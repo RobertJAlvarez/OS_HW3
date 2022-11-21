@@ -403,7 +403,36 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   /* STUB */
-  return -1;
+  node_t *node = path_solver(path, errnoptr);
+
+  for (int i = 0; i < sizeof(node->name); i++){
+    //Check if the next char in the name is null character
+    if(node->name[i+1] == "\0"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    //Check that the name does not have a forward slash
+    if(node->name[i] == "/"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    //Check that the name is not greated than 256
+    if(node->name[i] == " " && node->name[i+1] == " "){
+
+      //Update number of children for directory
+      node->type.directory.number_children--;
+
+      //Update last time of modification
+      node->times[1].day = localtime(node->times[1].day);
+      node->times[1].month = localtime(node->times[1].month);
+      node->times[1].year = localtime(node->times[1].year);
+      node->times[1].hour = localtime(node->times[1].hour);
+      node->times[1].minute = localtime(node->times[1].minute);
+      node->times[1].second = localtime(node->times[1].second);
+
+    }
+  }
+  return 0;
 }
 
 /* Implements an emulation of the rmdir system call on the filesystem 
@@ -423,7 +452,34 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   /* STUB */
-  return -1;
+  node_t *node = path_solver(path, errnoptr);
+
+   for (int i = 0; i < sizeof(node->name); i++){
+    //Check if the next char in the name is null character
+    if(node->name[i+1] == "\0"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    //Check that the name does not have a forward slash
+    if(node->name[i] == "/"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    if(node->name[i] == "." || (node->name[i] == "." && node->name[i+1] == ".")){
+      //TODO: CHANGE ERROR POINTER
+      return -1;
+    }
+    //Check that the name is not greated than 256
+    if(node->name[i] == " " && node->name[i+1] == " "){
+
+      //Update number of children for directory
+      if(node->type.directory.number_children != 0){
+        errnoptr = ENOTEMPTY;
+        return -1;
+      }
+    }
+  }
+  return 0;
 }
 
 /* Implements an emulation of the mkdir system call on the filesystem 
@@ -441,6 +497,7 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 int __myfs_mkdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   /* STUB */
+  
   return -1;
 }
 
@@ -514,6 +571,7 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   node_t *node = path_solver(path, errnoptr);
+
   // Checks if path is valid, if not valid return -1
   if (node == NULL) {
     return -1;
