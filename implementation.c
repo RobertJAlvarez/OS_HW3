@@ -433,7 +433,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 
   for (int i = 0; i < sizeof(node->name); i++){
     //Check if the next char in the name is null character
-    if(node->name[i] != "\0" && node->name[i+1] == "\0"){
+    if(node->name[i+1] == "\0"){
       errnoptr = EISDIR;
       return -1;
     }
