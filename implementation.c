@@ -1,5 +1,4 @@
-/*
-  MyFS: a tiny file-system written for educational purposes
+/*MyFS: a tiny file-system written for educational purposes
 
   MyFS is 
 
@@ -24,7 +23,7 @@
   This program can be distributed under the terms of the GNU GPL.
   See the file COPYING.
 
-  gcc -Wall myfs.c implementation.c `pkg-config fuse --cflags --libs` -o myfs
+  gcc -Wall myfs.c implementation.c alloc.c `pkg-config fuse --cflags --libs` -o myfs
 */
 
 #include <stddef.h>
@@ -39,6 +38,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
+#include "alloc.h"
 #include "implementation.h"
 
 /* The filesystem you implement must support all the 13 operations
@@ -233,10 +233,25 @@
 */
 
 /* HELPER TYPES AND STRUCTS GO HERE */
+#define MYFS_MAGIC ((uint32_t) 0xCAFEBABE)
+#define NAME_MAX_LEN ((size_t) 255)
 
 typedef size_t __off_t;
+typedef unsigned int u_int;
 
-typedef struct file_block_struct_t {
+typedef struct __handler_t {
+  uint32_t magic;
+  __off_t root_dir;
+  __off_t free_memory;
+  size_t size;
+} handler_t;
+
+typedef struct __free_block_t {
+  size_t size;
+  __off_t next_block;
+} free_block_t;
+
+typedef struct __file_block_t {
   size_t size;
   size_t allocated;
   __off_t data;
@@ -249,21 +264,23 @@ typedef struct __inode_file_t {
 } file_t;
 
 typedef struct __inode_directory_t {
+  size_t max_children;
   size_t number_children;
-  __off_t children; //This is an offset to an array of offsets to folders
+  //children is an offset to an array of offsets to folders and files. Children starts with '..' offsets
+  __off_t children;
 } directory_t;
 
 typedef struct __times_t {
-  unsigned int second : 5;  //Do << 1 for a range max of 62
-  unsigned int minute : 6;  //0 < minutes < 63
-  unsigned int hour : 5;    //0 < hour < 31
-  unsigned int day : 5;     //0 < day < 31
-  unsigned int month : 4;   //0 < month < 15
-  unsigned int year : 7;    //1970 < year < 1970 + 127 = 2107
+  u_int second : 5;  //Do << 1 for a range max of 62
+  u_int minute : 6;  //0 < minutes < 63
+  u_int hour : 5;    //0 < hour < 31
+  u_int day : 5;     //0 < day < 31
+  u_int month : 4;   //0 < month < 15
+  u_int year : 7;    //1970 < year < 1970 + 127 = 2107
 } times_t;
 
 typedef struct __inode_t {
-  char name[256];
+  char name[NAME_MAX_LEN + ((size_t) 1)];
   char is_file;
   times_t times[2]; //times[0]: creation date, times[1]: last modification date
   union {
@@ -275,9 +292,81 @@ typedef struct __inode_t {
 /* End of types and structs */
 
 /* YOUR HELPER FUNCTIONS GO HERE */
+void *off_to_pointer(void *reference, __off_t offset)
+{
+  void *ptr = reference + offset;
+
+  //Check that our pointer address didn't overflow
+  if (ptr < reference) {
+    return NULL;
+  }
+
+  return ptr;
+}
+
+__off_t pointer_to_off(void *reference, void *ptr)
+{
+  __off_t offset = ((__off_t) (ptr - reference));
+
+  //Check that our offset didn't overflow
+  if (((void *) offset) < reference) {
+    return 0;
+  }
+
+  return offset;
+}
+
+void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld, __off_t parent_off_t)
+{
+  memset(node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
+  memcpy(node->name, name, strlen(name)); //Copy given name into node->name
+  node->is_file = 0;
+  //TODO: How can I get the current time?
+  directory_t dict = node->type.directory;
+  dict.max_children = max_chld;         //We currently only have space allocated to hold 4 nodes
+  dict.number_children = ((size_t) 1);  //We use the first child space for '..'
+  //We have a handler_t and a node_t for the root node, so the children of the root directory start after them
+  dict.children = pointer_to_off(fsptr, __malloc_impl(max_chld*sizeof(__off_t)));
+  //Set first children to point to its parent
+  __off_t *ptr = ((__off_t *) (fsptr + dict.children));
+  *ptr = parent_off_t;
+}
+
+void handler(void *fsptr, size_t fssize)
+{
+  handler_t *handle = ((handler_t *) fsptr);
+
+  //If we are mounting the file system for the first time
+  if (handle->magic != MYFS_MAGIC) {
+    //Set general stats
+    handle->magic = MYFS_MAGIC;
+    handle->size = fssize;
+
+    //Save space for root directory
+    //root directory is a node_t variable that starts after the handler_t object at the beginning of our file system
+    handle->root_dir = sizeof(handler_t);     //Only store the offset
+    node_t *root = off_to_pointer(fsptr, handle->root_dir);
+
+    //Set the free blocks information
+    //We had use a handler_t and a node_t for the root directory
+    handle->free_memory = handle->root_dir + sizeof(node_t);  //This is just the offset
+    free_block_t *fb = off_to_pointer(fsptr, handle->free_memory);
+
+    //Set everything on memory to be 0 starting at the first free block
+    memset(fb, 0, fb->size);
+
+    fb->size = fssize - handle->free_memory;
+    //fb->next_block is zero (that would be our new "NULL" pointer)
+
+    //Set the root directory to be name Robert with 4 children where the parent is NULL
+    make_dir_node(fsptr, root, "Robert", 4, 0);
+  }
+}
+
 void print_sizeof_struct()
 {
   printf("Structs:\n");
+  printf("sizeof(free_block_t) = %zu\n", sizeof(free_block_t));
   printf("sizeof(file_block_t) = %zu\n", sizeof(file_block_t));
   printf("sizeof(file_t) = %zu\n", sizeof(file_t));
   printf("sizeof(directory_t) = %zu\n", sizeof(directory_t));
@@ -291,6 +380,53 @@ void print_sizeof_struct()
   printf("sizeof(node.is_file) = %zu\n", sizeof(node.is_file));
   printf("sizeof(node.times) = %zu\n", sizeof(node.times));
   printf("sizeof(node.type) = %zu\n", sizeof(node.type));
+}
+
+char **tokenize(const char token, const char *path)
+{
+  u_int n_tokens = 0;
+  for (const char *c = path; *c != '\0'; c++) {
+    if (*c == token) {
+      n_tokens++;
+    }
+  }
+
+  char **tokens = (char **) malloc((n_tokens+1)*sizeof(char *));
+  const char *start = &path[1];  //Jump the first character which is '\'
+  const char *end = start;
+  char *t;
+
+  //Populate tokens
+  for (u_int i = 0; i < n_tokens; i++) {
+    while ( (*end != token) && (*end != '\0') ) {
+      end++;
+    }
+    //Make space for the token
+    t = (char *) malloc((((u_int) (end-start))+((u_int)1))*sizeof(char));
+    //Copy token
+    memcpy(t, start, end-start);
+    t[end-start] = '\0';
+    tokens[i] = t;
+    start = ++end;
+  }
+  //Make array a null terminated
+  tokens[n_tokens] = NULL;
+
+  return tokens;
+}
+
+void print_tokens(char **tokens)
+{
+  for ( ; *tokens; tokens++) {
+    printf("%s\n", *tokens);
+  }
+}
+
+node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
+{
+  char **tokens = tokenize('/', path);
+
+  return NULL;
 }
 
 /* End of helper functions */
@@ -513,11 +649,12 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 */
 int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  node_t *node = path_solver(path, errnoptr);
+  node_t *node = path_solver(fsptr, path, errnoptr);
   // Checks if path is valid, if not valid return -1
   if (node == NULL) {
     return -1;
   }
+
   //Checks if node is a file, if it is a file return 0
   return node->is_file ? 0 : -1;
 }
