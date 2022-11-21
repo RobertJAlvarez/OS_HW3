@@ -264,7 +264,7 @@ typedef struct __times_t {
 
 typedef struct __inode_t {
   char name[256];
-  char is_file;
+  char is_file;//0 dir - 1 file
   times_t times[2]; //times[0]: creation date, times[1]: last modification date
   union {
     file_t file;
@@ -291,6 +291,27 @@ void print_sizeof_struct()
   printf("sizeof(node.is_file) = %zu\n", sizeof(node.is_file));
   printf("sizeof(node.times) = %zu\n", sizeof(node.times));
   printf("sizeof(node.type) = %zu\n", sizeof(node.type));
+}
+
+
+//funsction to update time(from lauter)
+void update_time(node_t *node, int set_mode){
+  struct times_t ts;
+
+  if(node == Null)
+  {
+    return;
+  }
+
+  if(clock_gettime(CLOCK_REALTIME, &ts) == 0)
+  {
+    node->times[0];
+    if (set_mode)
+    {
+      node->times[1] = ts;
+    }
+  }
+
 }
 
 /* End of helper functions */
@@ -405,9 +426,14 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
   /* STUB */
   node_t *node = path_solver(path, errnoptr);
 
+  if(node == NULL){
+    errnoptr = ENOENT;
+    return -1;
+  }
+
   for (int i = 0; i < sizeof(node->name); i++){
     //Check if the next char in the name is null character
-    if(node->name[i+1] == "\0"){
+    if(node->name[i] != "\0" && node->name[i+1] == "\0"){
       errnoptr = EISDIR;
       return -1;
     }
@@ -423,12 +449,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
       node->type.directory.number_children--;
 
       //Update last time of modification
-      node->times[1].day = localtime(node->times[1].day);
-      node->times[1].month = localtime(node->times[1].month);
-      node->times[1].year = localtime(node->times[1].year);
-      node->times[1].hour = localtime(node->times[1].hour);
-      node->times[1].minute = localtime(node->times[1].minute);
-      node->times[1].second = localtime(node->times[1].second);
+      update_time(node, 1);
 
     }
   }
@@ -453,6 +474,11 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 {
   /* STUB */
   node_t *node = path_solver(path, errnoptr);
+
+  if(node == NULL){
+    errnoptr = ENOENT;
+    return -1
+  }
 
    for (int i = 0; i < sizeof(node->name); i++){
     //Check if the next char in the name is null character
@@ -497,6 +523,12 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 int __myfs_mkdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   /* STUB */
+  node_t *node = path_solver(path, errnoptr);
+
+  if(node == NULL){
+    errnoptr = EISDIR;
+    return -1
+  }
   
   return -1;
 }
