@@ -3,6 +3,11 @@
 #include <unistd.h>   //ssize_t getpagesize(void)
 #include "alloc.h"
 
+// BEGINNING OF STRUCTS
+
+
+// END OF STRUCTS
+
 // BEGINNING OF HELPER FUNCTIONS DECLARATION
 
 /* Initialize the linked list to keep the history. */
