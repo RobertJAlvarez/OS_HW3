@@ -352,11 +352,9 @@ void handler(void *fsptr, size_t fssize)
     handle->free_memory = handle->root_dir + sizeof(node_t);  //This is just the offset
     free_block_t *fb = off_to_pointer(fsptr, handle->free_memory);
 
-    //Set everything on memory to be 0 starting at the first free block
-    memset(fb, 0, fb->size);
-
+    //Set everything on memory to be 0 starting at the first free block + sizeof(size_t)
     fb->size = fssize - handle->free_memory;
-    //fb->next_block is zero (that would be our new "NULL" pointer)
+    memset(((void *) fb) + sizeof(size_t), 0, fb->size - sizeof(size_t));
 
     //Set the root directory to be name Robert with 4 children where the parent is NULL
     make_dir_node(fsptr, root, "Robert", 4, 0);
