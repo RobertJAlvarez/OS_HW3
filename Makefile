@@ -19,4 +19,3 @@ clean:
 main.o: implementation.h
 alloc.o: alloc.h
 implementation.o : alloc.h implementation.h
-

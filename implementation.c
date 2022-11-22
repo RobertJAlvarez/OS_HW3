@@ -429,6 +429,22 @@ node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
   return NULL;
 }
 
+void update_time(node_t *node, int set_mode)
+{
+  struct times_t ts;
+
+  if (node == NULL) {
+    return;
+  }
+
+  if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+    node->times[0];
+    if (set_mode) {
+      node->times[1] = ts;
+    }
+  }
+}
+
 /* End of helper functions */
 
 /* Implements an emulation of the stat system call on the filesystem 
@@ -538,8 +554,36 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 */
 int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  /* STUB */
-  return -1;
+  node_t *node = path_solver(path, errnoptr);
+
+  if(node == NULL){
+    errnoptr = ENOENT;
+    return -1;
+  }
+
+  for (int i = 0; i < sizeof(node->name); i++){
+    //Check if the next char in the name is null character
+    if(node->name[i+1] == "\0"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    //Check that the name does not have a forward slash
+    if(node->name[i] == "/"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    //Check that the name is not greated than 256
+    if(node->name[i] == " " && node->name[i+1] == " "){
+
+      //Update number of children for directory
+      node->type.directory.number_children--;
+
+      //Update last time of modification
+      update_time(node, 1);
+
+    }
+  }
+  return 0;
 }
 
 /* Implements an emulation of the rmdir system call on the filesystem 
@@ -558,8 +602,38 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 */
 int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  /* STUB */
-  return -1;
+  node_t *node = path_solver(path, errnoptr);
+
+  if (node == NULL){
+    errnoptr = ENOENT;
+    return -1
+  }
+
+  for (int i = 0; i < sizeof(node->name); i++){
+    //Check if the next char in the name is null character
+    if (node->name[i+1] == "\0"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    //Check that the name does not have a forward slash
+    if (node->name[i] == "/"){
+      errnoptr = EISDIR;
+      return -1;
+    }
+    if (node->name[i] == "." || (node->name[i] == "." && node->name[i+1] == ".")){
+      //TODO: CHANGE ERROR POINTER
+      return -1;
+    }
+    //Check that the name is not greated than 256
+    if (node->name[i] == " " && node->name[i+1] == " ") {
+      //Update number of children for directory
+      if (node->type.directory.number_children != 0){
+        errnoptr = ENOTEMPTY;
+        return -1;
+      }
+    }
+  }
+  return 0;
 }
 
 /* Implements an emulation of the mkdir system call on the filesystem 
@@ -744,4 +818,3 @@ int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statv
   /* STUB */
   return -1;
 }
-
