@@ -1,12 +1,12 @@
 CC     = gcc
 OBJS   = main.o
 # -W* for warnings, -g3 for maximum debug, -O3 for maximum optimization
-CFLAGS = -Wall -Wextra -Wundef -Wshadow -Wwrite-strings -Wcast-align -Wstrict-prototypes -Waggregate-return -Wpointer-arith -Wcast-qual \
-         -Wswitch-default -Wswitch-enum -Wconversion -Wunreachable-code -Wfloat-equal -Wno-visibility -Wno-unused-parameter -g3 -O3
+CFLAGS = -g3 -O3 -Wall -Wextra -Wundef -Wshadow -Wwrite-strings -Wcast-align -Wstrict-prototypes -Waggregate-return -Wcast-qual \
+         -Wswitch-default -Wswitch-enum -Wconversion -Wunreachable-code -Wfloat-equal -Wno-visibility -Wno-unused-parameter
 
 all: main
 
-main: $(OBJS) implementation.o
+main: $(OBJS) alloc.o implementation.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 run: main
@@ -16,6 +16,6 @@ run: main
 clean:
 	rm -f *.o main
 
-main.o: main.c implementation.h
-implementation.o : implementation.h
-
+main.o: implementation.h
+alloc.o: alloc.h
+implementation.o : alloc.h implementation.h
