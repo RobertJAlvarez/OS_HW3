@@ -5,6 +5,14 @@
 
 // BEGINNING OF STRUCTS
 
+typedef struct s_AllocateFrom {
+  size_t remaining;
+  struct s_AllocateFrom *next_space;
+} AllocateFrom;
+
+typedef struct s_List {
+  struct s_AllocateFrom *first_space;
+} List;
 
 // END OF STRUCTS
 
