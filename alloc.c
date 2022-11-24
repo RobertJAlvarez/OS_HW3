@@ -1,37 +1,19 @@
 #include <stddef.h>
 #include <sys/mman.h> //mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset)  munmap(void *addr, size_t len)
 #include <unistd.h>   //ssize_t getpagesize(void)
+#include <string.h>
 #include "alloc.h"
-
-// BEGINNING OF STRUCTS
-
-typedef struct s_AllocateFrom {
-  size_t remaining;
-  struct s_AllocateFrom *next_space;
-} AllocateFrom;
-
-typedef struct s_List {
-  struct s_AllocateFrom *first_space;
-} List;
-
-// END OF STRUCTS
 
 // BEGINNING OF HELPER FUNCTIONS DECLARATION
 
 /* Make an AllocateFrom item using length and start and add it to the list which does it in ascending order. */
-void add_allocation_space(AllocateFrom *new_space);
+void add_allocation_space(List *LL, AllocateFrom *new_space);
 
-/* Iterate LL to get a pointer that can hold size or make a new PAGE or an individual mmap for something greater than PAGE-sizeof(size_t),
- * such pointer must have size in location ptr - sizeof(size_t). */
-void *get_allocation(size_t size);
+/*
+ */
+void *get_allocation(List *LL, size_t size);
 
 // END OF HELPER FUNCTIONS DECLARATION
-
-// BEGINNING OF GLOBAL VARIABLES DECLARATION
-
-size_t PAGE;  //define the size of a page
-
-// END OF GLOBAL VARIABLES DECLARATION
 
 /* Make an AllocateFrom item using length and start and add it to the list which does it in ascending order */
 void add_allocation_space(List *LL, AllocateFrom *alloc)
@@ -48,21 +30,6 @@ void add_allocation_space(List *LL, AllocateFrom *alloc)
       alloc->remaining += sizeof(size_t) + temp->remaining;
       //Update pointers
       alloc->next_space = temp->next_space;
-      //Check if by adding new_space we get everything back so we can free the page
-      if ( alloc->remaining == (PAGE - sizeof(size_t)) ) {
-        //Save new first_space
-        LL->first_space = alloc->next_space;
-        //Free previous first_space
-        if (munmap(alloc, PAGE) != 0) { //If unmaping was unsuccessful
-          return;
-        }
-        //If we have free every page mapped, we free the LL as well.
-        if (LL->first_space == NULL) {
-          if (munmap(LL, sizeof(List)) == 0) { //If unmaping was successful
-            LL = NULL;
-          }
-        }
-      }
     }
     //We couldn't merge so we just add it as the first_space and update pointers
     else {
@@ -83,16 +50,6 @@ void add_allocation_space(List *LL, AllocateFrom *alloc)
       if ( (((char *) alloc) + sizeof(size_t) + alloc->remaining) == ((char *) after_alloc) ) {
         alloc->remaining += sizeof(size_t) + after_alloc->remaining;
         alloc->next_space = after_alloc->next_space;
-        //Check if the merge free an entire page so we can unmap it from memory
-        if ( alloc->remaining == (PAGE - sizeof(size_t)) ) {
-          //Update pointers so now prev points to what alloc was pointing
-          temp->next_space = alloc->next_space;
-          //unmap alloc
-          munmap(alloc, PAGE);
-          //alloc has been added to the linked list and it was the beginning of the page so it was free but we still
-          //have temp which comes before that (coming from another page) so we don't check for empty LL to free it
-          return;
-        }
       }
       //We couldn't merge them
       else {
@@ -107,38 +64,6 @@ void add_allocation_space(List *LL, AllocateFrom *alloc)
     if ( (((char *) temp) + sizeof(size_t) + temp->remaining) == ((char *) alloc) ) {
       temp->remaining += sizeof(size_t) + alloc->remaining;
       temp->next_space = alloc->next_space;
-      //Check if the merge free an entire page so we can unmap it from memory
-      if (temp->remaining == (PAGE - sizeof(size_t)) ) {
-        /* See which AllocateFrom was pointing to temp so we can update pointers and unmap temp */
-        //Check if temp is the first element on the list
-        if (LL->first_space == temp) {
-          //Update LL first_space pointer
-          LL->first_space = temp->next_space;
-          //Unmap temp
-          if (munmap(temp, PAGE) != 0) {  //If unmaping was unsuccessful
-            return;
-          }
-          //Check if temp was the last thing on the list
-          if (LL->first_space == NULL) {
-            //Unmap the linked list
-            if (munmap(LL, sizeof(List)) == 0) { //If munmaping was successful
-              LL = NULL;
-            }
-          }
-        }
-        /* temp needs to be unmap but it is not the first thing on the list so we don't have what is pointing to it */
-        else {
-          //Get what is pointing to temp
-          AllocateFrom *before_temp = LL->first_space;
-          while (before_temp->next_space != temp) {
-            before_temp = before_temp->next_space;
-          }
-          //Update pointers
-          before_temp->next_space = temp->next_space;
-          //Unmap temp
-          munmap(temp, PAGE);
-        }
-      }
     }
     //We couldn't merge them
     else {
@@ -147,9 +72,6 @@ void add_allocation_space(List *LL, AllocateFrom *alloc)
   }
 }
 
-/* Iterate LL to get a pointer that can hold size or make a new PAGE or an individual mmap for something greater than PAGE-sizeof(size_t),
- * such pointer must have size in location ptr - sizeof(size_t)
- */
 void *get_allocation(List *LL, size_t size)
 {
   AllocateFrom *alloc = LL->first_space;
@@ -177,25 +99,16 @@ void *get_allocation(List *LL, size_t size)
   }
   //If the first page don't have enough space for what was asked
   else {
+    //TODO: If no block can hold what is needed, we save the largest block found
+
     //Find a node that is pointing to an space where we can get size from
     while ( (alloc->next_space != NULL) && (alloc->next_space->remaining < size) ) {
       alloc = alloc->next_space;
     }
 
-    //If no node can hold what is needed, we make a page, get what we need and add the rest to the linked list
+    //TODO: Check if we got everything or just a portion
     if (alloc->next_space == NULL) {
-      ptr = make_allocation_space();
-      if (ptr == NULL) {
-        return NULL;
-      }
-      //make alloc to point to the next available space in memory
-      alloc = (AllocateFrom *) (((void *) ptr) + sizeof(size_t) + size);
-      //Set the new space available by alloc
-      alloc->remaining = ptr->remaining - size - sizeof(size_t);
-      //Add the remaining space to the LL
-      add_allocation_space(alloc);
-      //Set the available space into ptr
-      ptr->remaining = size;
+      //
     }
     //If we find a valid space to get memory from
     else {
@@ -261,20 +174,20 @@ void *__realloc_impl(List *LL, void *ptr, size_t size)
     temp = (AllocateFrom *) (((void *) alloc) + sizeof(size_t) + size);
     temp->remaining = alloc->remaining - sizeof(size_t) - size;
     temp->next_space = NULL;
-    add_allocation_space(temp);
+    add_allocation_space(LL, temp);
     //Update remaining space
     alloc->remaining = size;
   }
   //If we are asking for more than what we have in alloc
   else {
     //Get new space to copy to
-    void new_ptr = get_allocation(LL, size);
+    void *new_ptr = get_allocation(LL, size);
     //We couldn't get enough space
     if (new_ptr == NULL) {
       return NULL;
     }
     //Copy space where to copy to, so we can iterate without losing the beginning
-    memset(new_ptr, ptr, alloc->remaining);
+    memcpy(new_ptr, ptr, alloc->remaining);
     //Put alloc back into the LL for reuse
     add_allocation_space(LL, alloc);
   }
@@ -283,7 +196,7 @@ void *__realloc_impl(List *LL, void *ptr, size_t size)
 }
 
 /* Add space back to List using add_allocation_space */
-void __free_impl(List, *LL, void *ptr)
+void __free_impl(List *LL, void *ptr)
 {
   if (ptr == NULL) {
     return;
@@ -292,30 +205,5 @@ void __free_impl(List, *LL, void *ptr)
   //Adjust ptr so size_t before to start on the size of pointer
   AllocateFrom *temp = (AllocateFrom *) (ptr - sizeof(size_t));
   add_allocation_space(LL, temp);
-}
-
-static int __try_size_t_multiply(size_t *ans, size_t n1, size_t n2)
-{
-  size_t res, quot;  //res = residual, quot = quotient
-
-  // If any of the arguments a and b is zero, everything works just fine.
-  if ( (n1 == ((size_t) 0)) || (n2 == ((size_t) 0)) ) {
-    *ans = ((size_t) 0);
-    return 1;
-  }
-
-  // Neither a nor b is zero
-  *ans = n1 * n2;
-
-  // Check that ans is a multiple of n1. Therefore, ans = n1 * quot + res where the residual must be 0
-  quot = *ans / n1;
-  res = *ans % n1;
-  if (res != ((size_t) 0)) return 0;
-
-  // Here we know that ans is a multiple of n1, and the quotient must be n2
-  if (quot != n2) return 0;
-
-  // Multiplication did not overflow :)
-  return 1;
 }
 
