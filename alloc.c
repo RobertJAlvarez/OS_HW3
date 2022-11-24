@@ -18,12 +18,6 @@ typedef struct s_List {
 
 // BEGINNING OF HELPER FUNCTIONS DECLARATION
 
-/* Initialize the linked list to keep the history. */
-int init_LL(void);
-
-/* Use mmap to get a page of memory, use the beginning for the AllocateFrom object. */
-AllocateFrom *make_allocation_space(void);
-
 /* Make an AllocateFrom item using length and start and add it to the list which does it in ascending order. */
 void add_allocation_space(AllocateFrom *new_space);
 
@@ -31,56 +25,16 @@ void add_allocation_space(AllocateFrom *new_space);
  * such pointer must have size in location ptr - sizeof(size_t). */
 void *get_allocation(size_t size);
 
-/* Check if n1 * n2 can be hold in a size_t type. If so, return 1 and store the value in c. Otherwise, return 0 */
-static int __try_size_t_multiply(size_t *c, size_t n1, size_t n2);
-
 // END OF HELPER FUNCTIONS DECLARATION
 
 // BEGINNING OF GLOBAL VARIABLES DECLARATION
 
 size_t PAGE;  //define the size of a page
-List *LL;     //Start a list to save all the allocation spaces to use in malloc, realloc, and calloc
 
 // END OF GLOBAL VARIABLES DECLARATION
 
-/* Initialize the linked list to keep the history */
-int init_LL()
-{
-  void *ptr = mmap(NULL, sizeof(List), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_ANONYMOUS, -1,0);
-  //Make sure that mmap was successful
-  if (ptr == MAP_FAILED) {
-    return -1;
-  }
-  LL = (List *) ptr;
-
-  //define the size of a page
-  if (PAGE == 0) {
-    PAGE = (size_t) getpagesize();
-  }
-
-  LL->first_space = NULL;
-  return 0;
-}
-
-/* Use mmap to get a page of memory, use the beginning for the Map object and the rest for the AllocateFrom object */
-AllocateFrom *make_allocation_space()
-{
-  //Allocate a page of memory for a Map and the rest to AllocateFrom
-  AllocateFrom *ptr = (AllocateFrom *) mmap(NULL, PAGE, PROT_WRITE|PROT_READ, MAP_SHARED|MAP_ANONYMOUS, -1,0);
-
-  //Make sure that mmap was successful
-  if (ptr == MAP_FAILED) {
-    return NULL;
-  }
-
-  ptr->remaining = PAGE - sizeof(size_t);
-  ptr->next_space = NULL;
-
-  return ptr;
-}
-
 /* Make an AllocateFrom item using length and start and add it to the list which does it in ascending order */
-void add_allocation_space(AllocateFrom *alloc)
+void add_allocation_space(List *LL, AllocateFrom *alloc)
 {
   AllocateFrom *temp = LL->first_space;
 
@@ -196,19 +150,10 @@ void add_allocation_space(AllocateFrom *alloc)
 /* Iterate LL to get a pointer that can hold size or make a new PAGE or an individual mmap for something greater than PAGE-sizeof(size_t),
  * such pointer must have size in location ptr - sizeof(size_t)
  */
-void *get_allocation(size_t size)
+void *get_allocation(List *LL, size_t size)
 {
   AllocateFrom *alloc = LL->first_space;
   AllocateFrom *ptr = NULL;
-
-  //If there is no where to get space from, we make some space
-  if (alloc == NULL) {
-    LL->first_space = make_allocation_space();
-    if (LL->first_space == NULL) {
-      return NULL;
-    }
-    alloc = LL->first_space;
-  }
 
   //If the first page have just enough space from the first_space in our LL
   if ( (alloc->remaining >= size) && (alloc->remaining < (size+sizeof(AllocateFrom))) ) {
@@ -217,7 +162,7 @@ void *get_allocation(size_t size)
     //Get ptr to point to the beginning of the first space to return it
     ptr = alloc;
   }
-  //If the first page have more space that what is asked for and it can create another AllocateFrom object without issues
+  //If the first block have more space that what is asked for and it can create another AllocateFrom object without issues
   else if (alloc->remaining > size) {
     //LL is now pointing to what is remaining after using size
     LL->first_space = (AllocateFrom *) (((void *) alloc) + sizeof(size_t) + size);
@@ -280,50 +225,27 @@ void *get_allocation(size_t size)
 }
 
 /* If size is zero, return NULL. Otherwise, call get_allocation_space with size. */
-void *__malloc_impl(size_t size)
+void *__malloc_impl(List *LL, size_t size)
 {
-  //If user is asking for more or equal than a PAGE - sizeof(AllocateFrom) we map space just for what he ask + sizeof(size_t)
-  if (size > PAGE - sizeof(AllocateFrom) - sizeof(size_t)) {
-    void *ptr = mmap(NULL, size+sizeof(AllocateFrom)+sizeof(size_t), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_ANONYMOUS, -1,0);
-    if (ptr == MAP_FAILED) {
-      return NULL;
-    }
-    size_t *temp = ((size_t *) ptr);
-    *temp = (size + sizeof(AllocateFrom));
-    return (void *) &temp[1];
-  }
-
   if (size == ((size_t) 0)) {
     return NULL;
   }
 
-  if (LL == NULL) {
-    if (init_LL() < 0) {
-      return NULL;
-    }
-  }
-
-  return get_allocation(size);
+  return get_allocation(LL, size);
 }
 
 /* If size is less than what already assign to *ptr just lock what is after size and add it using add_allocation_space. */
-void *__realloc_impl(void *ptr, size_t size)
+void *__realloc_impl(List *LL, void *ptr, size_t size)
 {
-  //If ptr is NULL, realloc() is identical to a call to malloc() for size bytes.
-  if (ptr == NULL) {
-    return __malloc_impl(size);
-  }
-
   //If size is 0, we free the ptr and return NULL
   if (size == ((size_t) 0)) {
-    __free_impl(ptr);
+    __free_impl(LL, ptr);
     return NULL;
   }
 
-  if (LL == NULL) {
-    if (init_LL() < 0) {
-      return NULL;
-    }
+  //If ptr is NULL, realloc() is identical to a call to malloc() for size bytes.
+  if (ptr == NULL) {
+    return get_allocation(LL, size);
   }
 
   AllocateFrom *alloc = (AllocateFrom *) (((void *) ptr) - sizeof(size_t));
@@ -335,126 +257,41 @@ void *__realloc_impl(void *ptr, size_t size)
   }
   //If the new size is less than before and we can create an AllocateFrom element to add to LL
   else if (alloc->remaining > size) {
-    //If what is going to be modify is more than a page we need to individually unmap it because that's how we map it
-    if (alloc->remaining >= PAGE - sizeof(size_t)) {
-      //Save where to start coping from
-      char *old_ptr = (char *) ptr;
-      //Get new space to copy to
-      if (size >= (PAGE - sizeof(AllocateFrom))) {
-        ptr = mmap(NULL, size+sizeof(AllocateFrom), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_ANONYMOUS, -1,0);
-        if (ptr == MAP_FAILED) {
-          return NULL;
-        }
-        //Set the remaining space and make ptr to point after the size_t remaining amount
-        size_t *t = ((size_t *) ptr);
-        *t = (size + sizeof(AllocateFrom) - sizeof(size_t));
-        ptr = (void *) &t[1];
-      } else {
-        ptr = get_allocation(size);
-      }
-      //We couldn't get enough space
-      if (ptr == NULL) {
-        return NULL;
-      }
-      //Copy first size characters from alloc to temp
-      for (char *t = (char *) ptr; size--; t++, old_ptr++) {
-        *t = *old_ptr;
-      }
-      munmap(alloc,alloc->remaining);
-    }
-    else {
-      //Save what is left in temp and add it to the LL
-      temp = (AllocateFrom *) (((void *) alloc) + sizeof(size_t) + size);
-      temp->remaining = alloc->remaining - sizeof(size_t) - size;
-      temp->next_space = NULL;
-      add_allocation_space(temp);
-      //Update remaining space
-      alloc->remaining = size;
-    }
+    //Save what is left in temp and add it to the LL
+    temp = (AllocateFrom *) (((void *) alloc) + sizeof(size_t) + size);
+    temp->remaining = alloc->remaining - sizeof(size_t) - size;
+    temp->next_space = NULL;
+    add_allocation_space(temp);
+    //Update remaining space
+    alloc->remaining = size;
   }
   //If we are asking for more than what we have in alloc
   else {
-    //Save where to start copying from
-    char *a = (char *) ptr;
     //Get new space to copy to
-    if (size >= (PAGE - sizeof(AllocateFrom))) {
-      ptr = mmap(NULL, size+sizeof(AllocateFrom), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_ANONYMOUS, -1,0);
-      if (ptr == MAP_FAILED) {
-        return NULL;
-      }
-      size_t *t = ((size_t *) ptr);
-      *t = (size + sizeof(AllocateFrom) - sizeof(size_t));
-      ptr = (void *) &t[1];
-    } else {
-      ptr = get_allocation(size);
-    }
+    void new_ptr = get_allocation(LL, size);
     //We couldn't get enough space
-    if (ptr == NULL) {
+    if (new_ptr == NULL) {
       return NULL;
     }
     //Copy space where to copy to, so we can iterate without losing the beginning
-    char *t = (char *) ptr;
-    //Copy all characters from alloc to temp
-    for (size_t i = ((size_t) 0); i < alloc->remaining; i++) {
-      *t++ = *a++;
-    }
+    memset(new_ptr, ptr, alloc->remaining);
     //Put alloc back into the LL for reuse
-    if (alloc->remaining >= (PAGE - sizeof(size_t)) ) {
-      munmap(alloc,alloc->remaining);
-    }
-    else {
-      add_allocation_space(alloc);
-    }
-  }
-
-  return ptr;
-}
-
-/* Call malloc and iterate over the point to change everything to '0's. */
-void *__calloc_impl(size_t count, size_t size)
-{
-  size_t n_bytes;
-  if (__try_size_t_multiply(&n_bytes, count, size) == 0) {
-    return NULL;
-  }
-
-  //We either have count or size equal to 0
-  if (n_bytes == 0) {
-    return NULL;
-  }
-
-  void *ptr = __malloc_impl(n_bytes);
-
-  //No memory could be allocated
-  if (ptr == NULL) {
-    return NULL;
-  }
-
-  //Initialize all characters in calloc to '\0';
-  AllocateFrom *a = (AllocateFrom *) (((char *) ptr) - sizeof(size_t));
-  char *t = ((char *) ptr);
-  for (size_t i = ((size_t) 0); i < a->remaining; i++) {
-    *t++ = '\0';
+    add_allocation_space(LL, alloc);
   }
 
   return ptr;
 }
 
 /* Add space back to List using add_allocation_space */
-void __free_impl(void *ptr)
+void __free_impl(List, *LL, void *ptr)
 {
   if (ptr == NULL) {
     return;
   }
 
-  //Adjust ptr by sizeof(size_t) to start on the size number of pointer
-  AllocateFrom *temp = (AllocateFrom *) (((void *) ptr) - sizeof(size_t));
-  if (temp->remaining >= (PAGE-sizeof(size_t))) {
-    munmap(temp, temp->remaining);
-    return;
-  }
-
-  add_allocation_space(temp);  //Adjust ptr so size_t before to start on the size of pointer
+  //Adjust ptr so size_t before to start on the size of pointer
+  AllocateFrom *temp = (AllocateFrom *) (ptr - sizeof(size_t));
+  add_allocation_space(LL, temp);
 }
 
 static int __try_size_t_multiply(size_t *ans, size_t n1, size_t n2)
