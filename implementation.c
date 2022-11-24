@@ -277,12 +277,12 @@ typedef struct __times_t {
   u_int day : 5;     //0 < day < 31
   u_int month : 4;   //0 < month < 15
   u_int year : 7;    //1970 < year < 1970 + 127 = 2107
-} times_t;
+} my_time;
 
 typedef struct __inode_t {
   char name[NAME_MAX_LEN + ((size_t) 1)];
   char is_file;
-  times_t times[2]; //times[0]: creation date, times[1]: last modification date
+  my_time times[2]; //times[0]: creation date, times[1]: last modification date
   union {
     file_t file;
     directory_t directory;
@@ -316,17 +316,53 @@ __off_t pointer_to_off(void *reference, void *ptr)
   return offset;
 }
 
+void set_time(struct tm *timeinfo, my_time *t)
+{
+  t->second = ((u_int) timeinfo->tm_sec >> 1);
+  t->minute = ((u_int) timeinfo->tm_min);
+  t->hour = ((u_int) timeinfo->tm_hour);
+  t->day = ((u_int) timeinfo->tm_mday);
+  t->month = ((u_int) timeinfo->tm_mon);
+  t->year = ((u_int) timeinfo->tm_year);
+}
+
+void update_time(node_t *node, int new_node)
+{
+  if (node == NULL) {
+    return;
+  }
+
+  time_t ts;
+  struct tm *timeinfo;
+
+  time(&ts);
+  timeinfo = localtime(&ts);
+
+  //TODO: Check for errors
+  if (1) {
+    //Update last modification
+    set_time(timeinfo, &node->times[1]);
+    //Check if date of creation needs to be set
+    if (new_node) {
+      set_time(timeinfo, &node->times[0]);
+    }
+  }
+}
+
 void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld, __off_t parent_off_t)
 {
   memset(node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
   memcpy(node->name, name, strlen(name)); //Copy given name into node->name
   node->is_file = 0;
-  //TODO: How can I get the current time?
+  update_time(node, 1);
   directory_t dict = node->type.directory;
   dict.max_children = max_chld;         //We currently only have space allocated to hold 4 nodes
   dict.number_children = ((size_t) 1);  //We use the first child space for '..'
+
+  //Get linked list pointer header
+  List *LL = off_to_pointer(fsptr, ((handler_t *) fsptr)->free_memory);
   //We have a handler_t and a node_t for the root node, so the children of the root directory start after them
-  dict.children = pointer_to_off(fsptr, __malloc_impl(max_chld*sizeof(__off_t)));
+  dict.children = pointer_to_off(fsptr, __malloc_impl(LL, max_chld*sizeof(__off_t)));
   //Set first children to point to its parent
   __off_t *ptr = ((__off_t *) (fsptr + dict.children));
   *ptr = parent_off_t;
@@ -368,7 +404,7 @@ void print_sizeof_struct()
   printf("sizeof(file_block_t) = %zu\n", sizeof(file_block_t));
   printf("sizeof(file_t) = %zu\n", sizeof(file_t));
   printf("sizeof(directory_t) = %zu\n", sizeof(directory_t));
-  printf("sizeof(times_t) = %zu\n", sizeof(times_t));
+  printf("sizeof(my_time) = %zu\n", sizeof(my_time));
   printf("sizeof(node_t) = %zu\n", sizeof(node_t));
 
   printf("\nNode attribute:\n");
@@ -426,23 +462,6 @@ node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
 
   return NULL;
 }
-
-void update_time(node_t *node, int set_mode)
-{
-  struct times_t ts;
-
-  if (node == NULL) {
-    return;
-  }
-
-  if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-    node->times[0];
-    if (set_mode) {
-      node->times[1] = ts;
-    }
-  }
-}
-
 /* End of helper functions */
 
 /* Implements an emulation of the stat system call on the filesystem 
@@ -552,22 +571,22 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 */
 int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  node_t *node = path_solver(path, errnoptr);
+  node_t *node = path_solver(fsptr, path, errnoptr);
 
   if(node == NULL){
-    errnoptr = ENOENT;
+    *errnoptr = ENOENT;
     return -1;
   }
 
   for (int i = 0; i < sizeof(node->name); i++){
     //Check if the next char in the name is null character
     if(node->name[i+1] == "\0"){
-      errnoptr = EISDIR;
+      *errnoptr = EISDIR;
       return -1;
     }
     //Check that the name does not have a forward slash
     if(node->name[i] == "/"){
-      errnoptr = EISDIR;
+      *errnoptr = EISDIR;
       return -1;
     }
     //Check that the name is not greated than 256
@@ -578,7 +597,6 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 
       //Update last time of modification
       update_time(node, 1);
-
     }
   }
   return 0;
@@ -600,22 +618,22 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 */
 int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  node_t *node = path_solver(path, errnoptr);
+  node_t *node = path_solver(fsptr, path, errnoptr);
 
   if (node == NULL){
-    errnoptr = ENOENT;
-    return -1
+    *errnoptr = ENOENT;
+    return -1;
   }
 
   for (int i = 0; i < sizeof(node->name); i++){
     //Check if the next char in the name is null character
     if (node->name[i+1] == "\0"){
-      errnoptr = EISDIR;
+      *errnoptr = EISDIR;
       return -1;
     }
     //Check that the name does not have a forward slash
     if (node->name[i] == "/"){
-      errnoptr = EISDIR;
+      *errnoptr = EISDIR;
       return -1;
     }
     if (node->name[i] == "." || (node->name[i] == "." && node->name[i+1] == ".")){
@@ -626,7 +644,7 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
     if (node->name[i] == " " && node->name[i+1] == " ") {
       //Update number of children for directory
       if (node->type.directory.number_children != 0){
-        errnoptr = ENOTEMPTY;
+        *errnoptr = ENOTEMPTY;
         return -1;
       }
     }
@@ -722,6 +740,7 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   node_t *node = path_solver(fsptr, path, errnoptr);
+
   // Checks if path is valid, if not valid return -1
   if (node == NULL) {
     return -1;
@@ -816,3 +835,4 @@ int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statv
   /* STUB */
   return -1;
 }
+
