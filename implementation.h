@@ -2,7 +2,6 @@
 #define _MYFS_FUNCT_
 
 /* Helper functions */
-void print_sizeof_struct(void);
 char **tokenize(const char token, const char *path);
 void print_tokens(char **tokens);
 /* End of helper functions */
