@@ -6,7 +6,7 @@ CFLAGS = -g3 -O3 -Wall -Wextra -Wundef -Wshadow -Wwrite-strings -Wcast-align -Ws
 
 all: main
 
-main: $(OBJS) alloc.o implementation.o
+main: $(OBJS) implementation.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 run: main
@@ -17,6 +17,5 @@ clean:
 	rm -f *.o main
 
 main.o: implementation.h
-alloc.o: alloc.h
-implementation.o : alloc.h implementation.h
+implementation.o : implementation.h
 
