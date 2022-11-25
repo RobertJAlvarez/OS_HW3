@@ -1,8 +1,11 @@
 #ifndef _MYFS_FUNCT_
 #define _MYFS_FUNCT_
 
+typedef unsigned int u_int;
+
 /* Helper functions */
-char **tokenize(const char token, const char *path);
+char *get_last_token(const char *path, unsigned long *token_len);
+char **tokenize(const char token, const char *path, int skip_n_tokens);
 void print_tokens(char **tokens);
 /* End of helper functions */
 

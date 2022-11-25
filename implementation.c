@@ -464,7 +464,6 @@ void __free_impl(List *LL, void *ptr)
 #define NAME_MAX_LEN ((size_t) 255)
 
 typedef size_t __off_t;
-typedef unsigned int u_int;
 
 typedef struct __handler_t {
   uint32_t magic;
@@ -627,22 +626,58 @@ void handler(void *fsptr, size_t fssize)
   }
 }
 
-char **tokenize(const char token, const char *path)
+char *get_last_token(const char *path, unsigned long *token_len)
 {
-  u_int n_tokens = 0;
+  unsigned long len = strlen(path);
+  unsigned long idx;
+
+  //Find last '/' in path
+  for (idx = len-1; idx >= 0; idx--) {
+    if (path[idx] == '/') break;
+  }
+
+  //idx is at '/' but we want to start a character after it
+  idx++;
+
+  //Set the length of the last node
+  *token_len = len-idx;
+
+  //Make a copy of the last token
+  void *ptr = malloc((*token_len+1)*sizeof(char));
+
+  //Check that malloc was successful
+  if (ptr == NULL) {
+    return NULL;
+  }
+
+  char *copy = (char *) ptr;
+  strcpy(copy, &path[idx]); //strcpy(dst,src)
+
+  //Add null character to terminate the string
+  copy[*token_len] = '\0';
+
+  return copy;
+}
+
+char **tokenize(const char token, const char *path, int skip_n_tokens)
+{
+  int n_tokens = 0;
   for (const char *c = path; *c != '\0'; c++) {
     if (*c == token) {
       n_tokens++;
     }
   }
+  //n_tokens value would be of at least 1 because of root directory
+  //Do not tokenize the last skip_n_tokens
+  n_tokens -= skip_n_tokens;
 
-  char **tokens = (char **) malloc((n_tokens+1)*sizeof(char *));
+  char **tokens = (char **) malloc(((u_int) (n_tokens+1))*sizeof(char *));
   const char *start = &path[1];  //Jump the first character which is '\'
   const char *end = start;
   char *t;
 
   //Populate tokens
-  for (u_int i = 0; i < n_tokens; i++) {
+  for (int i = 0; i < n_tokens; i++) {
     while ( (*end != token) && (*end != '\0') ) {
       end++;
     }
@@ -667,7 +702,7 @@ void print_tokens(char **tokens)
   }
 }
 
-node_t *get_child(void *fsptr, directory_t *dict, const char *child)
+node_t *get_node(void *fsptr, directory_t *dict, const char *child)
 {
   size_t n_children = dict->number_children;
   __off_t *children = off_to_ptr(fsptr, dict->children);
@@ -689,7 +724,7 @@ node_t *get_child(void *fsptr, directory_t *dict, const char *child)
   return NULL;
 }
 
-node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
+node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens)
 {
   //Check if the path start at the root directory
   if (*path != '/') {
@@ -699,7 +734,7 @@ node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
   //Get root directory
   node_t *node = off_to_ptr(fsptr, ((handler_t *) fsptr)->root_dir);
   //Break path into tokens
-  char **tokens = tokenize('/', path);
+  char **tokens = tokenize('/', path, skip_n_tokens);
 
   for (char *token = *tokens; token != NULL; token++) {
     //Files cannot have children
@@ -708,7 +743,7 @@ node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
     }
     //If token is "." we stay on the same directory
     if (strcmp(token, ".") != 0) {
-      node = get_child(fsptr, &node->type.directory, token);
+      node = get_node(fsptr, &node->type.directory, token);
       //Check that the child was successfully retrieved
       if (node == NULL) {
         return NULL;
@@ -788,8 +823,45 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
 */
 int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char ***namesptr)
 {
-  /* STUB */
-  return -1;
+  node_t *node = path_solver(fsptr, path, 0);
+
+  //Path could not be solved, TODO: specify errnoptr
+  if (node == NULL) {
+    return -1;
+  }
+
+  //Check that the node is a directory, TODO: specify errnoptr
+  if (node->is_file) {
+    return -1;
+  }
+
+  //Check that directory have more than ".", ".." nodes inside
+  directory_t *dict = &node->type.directory;
+  if (dict->number_children == 1) {
+    return 0;
+  }
+
+  //Allocate space for all children, except "." and ".."
+  size_t n_children = dict->number_children-((size_t) 1);
+  void **ptr = calloc(n_children, sizeof(char *));
+  __off_t *children = off_to_ptr(fsptr, dict->children);
+
+  //Check that calloc call was successful
+  if (ptr == NULL) {
+    *errnoptr = EINVAL;
+    return -1;
+  }
+
+  char **names = ((char **) ptr);
+
+  //Fill array of names
+  for (size_t i = ((size_t) 1); i < n_children; i++) {
+    node = ((node_t *) off_to_ptr(fsptr, children[i]));
+    strcpy(names[i-1], node->name); //strcpy(dst,src)
+  }
+
+  *namesptr = names;
+  return ((int) n_children);
 }
 
 /* Implements an emulation of the mknod system call for regular files
@@ -810,8 +882,43 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 */
 int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  /* STUB */
-  return -1;
+  //Call path solver without the last node name because that is the file name if valid path name is given
+  node_t *node = path_solver(fsptr, path, 1);
+
+  //Check that the file parent exist
+  if (node == NULL) {
+    //TODO: set errnoptr
+    return -1;
+  }
+
+  //Check that the node returned is a directory
+  if (node->is_file) {
+    //TODO: set errnoptr
+    return -1;
+  }
+
+  //Get directory from node
+  directory_t *dict = &node->type.directory;
+
+  //Get last token which have the filename
+  unsigned long len;
+  char *filename = get_last_token(path,&len);
+
+  //Check that the parent don't contain a node with the same name as the one we are about to create
+  if (get_node(fsptr,dict,filename) != NULL) {
+    //TODO: set errnoptr
+    return -1;
+  }
+
+  //Check that the filename is between 1 and 255 characters long
+  if ( (len == 0) || (len > 255) ) {
+    //TODO: set errnoptr
+    return -1;
+  }
+
+  //Make the node and put it in the node
+
+  return 0;
 }
 
 /* Implements an emulation of the unlink system call for regular files
@@ -827,7 +934,9 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 */
 int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  node_t *node = path_solver(fsptr, path, errnoptr);
+  //Call path_solver with a 1 because we want the directory node where the filename belongs to
+  //TODO: Fix the algorithm
+  node_t *node = path_solver(fsptr, path, 1);
 
   if(node == NULL){
     *errnoptr = ENOENT;
@@ -836,18 +945,19 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 
   for (int i = 0; i < sizeof(node->name); i++){
     //Check if the next char in the name is null character
-    if(node->name[i+1] == "\0"){
+    if(node->name[i+1] == '\0'){
       *errnoptr = EISDIR;
       return -1;
     }
-    //Check that the name does not have a forward slash
-    if(node->name[i] == "/"){
-      *errnoptr = EISDIR;
-      return -1;
-    }
-    //Check that the name is not greated than 256
-    if(node->name[i] == " " && node->name[i+1] == " "){
 
+    //Check that the name does not have a forward slash
+    if(node->name[i] == '/'){
+      *errnoptr = EISDIR;
+      return -1;
+    }
+
+    //Check that the name is not greated than 256
+    if( (node->name[i] == ' ') && (node->name[i+1] == ' ') ) {
       //Update number of children for directory
       node->type.directory.number_children--;
 
@@ -874,7 +984,9 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 */
 int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  node_t *node = path_solver(fsptr, path, errnoptr);
+  //We can access the parent directory as the first children of the return directory
+  //TODO: Fix the algorithm
+  node_t *node = path_solver(fsptr, path, 0);
 
   if (node == NULL){
     *errnoptr = ENOENT;
@@ -883,21 +995,24 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 
   for (int i = 0; i < sizeof(node->name); i++){
     //Check if the next char in the name is null character
-    if (node->name[i+1] == "\0"){
+    if (node->name[i+1] == '\0') {
       *errnoptr = EISDIR;
       return -1;
     }
+
     //Check that the name does not have a forward slash
-    if (node->name[i] == "/"){
+    if (node->name[i] == '/'){
       *errnoptr = EISDIR;
       return -1;
     }
-    if (node->name[i] == "." || (node->name[i] == "." && node->name[i+1] == ".")){
+
+    if (node->name[i] == '.' || (node->name[i] == '.' && node->name[i+1] == '.')){
       //TODO: CHANGE ERROR POINTER
       return -1;
     }
+
     //Check that the name is not greated than 256
-    if (node->name[i] == " " && node->name[i+1] == " ") {
+    if (node->name[i] == ' ' && node->name[i+1] == ' ') {
       //Update number of children for directory
       if (node->type.directory.number_children != 0){
         *errnoptr = ENOTEMPTY;
@@ -905,6 +1020,7 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
       }
     }
   }
+
   return 0;
 }
 
@@ -995,10 +1111,12 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 */
 int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  node_t *node = path_solver(fsptr, path, errnoptr);
+  //Get the node where the file is located
+  node_t *node = path_solver(fsptr, path, 0);
 
   // Checks if path is valid, if not valid return -1
   if (node == NULL) {
+    //TODO: Set errnoptr
     return -1;
   }
 
