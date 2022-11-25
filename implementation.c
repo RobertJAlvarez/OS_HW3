@@ -23,7 +23,7 @@
   This program can be distributed under the terms of the GNU GPL.
   See the file COPYING.
 
-  gcc -Wall myfs.c implementation.c alloc.c `pkg-config fuse --cflags --libs` -o myfs
+  gcc -Wall myfs.c implementation.c `pkg-config fuse --cflags --libs` -o myfs
 */
 
 #include <stddef.h>
@@ -38,7 +38,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
-#include "alloc.h"
 #include "implementation.h"
 
 /* The filesystem you implement must support all the 13 operations
@@ -246,6 +245,12 @@ typedef struct s_List {
 } List;
 
 // END OF STRUCTS
+
+/* Memory allocation functions */
+void *__malloc_impl(List *LL, size_t size);
+void *__realloc_impl(List *LL, void *ptr, size_t size);
+void __free_impl(List *LL, void *ptr);
+/* End memory allocation functions */
 
 // BEGINNING OF HELPER FUNCTIONS DECLARATION
 
@@ -515,7 +520,7 @@ typedef struct __inode_t {
 /* End of types and structs */
 
 /* YOUR HELPER FUNCTIONS GO HERE */
-void *off_to_pointer(void *reference, __off_t offset)
+void *off_to_ptr(void *reference, __off_t offset)
 {
   void *ptr = reference + offset;
 
@@ -527,7 +532,7 @@ void *off_to_pointer(void *reference, __off_t offset)
   return ptr;
 }
 
-__off_t pointer_to_off(void *reference, void *ptr)
+__off_t ptr_to_off(void *reference, void *ptr)
 {
   __off_t offset = ((__off_t) (ptr - reference));
 
@@ -579,15 +584,15 @@ void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld,
   node->is_file = 0;
   update_time(node, 1);
   directory_t dict = node->type.directory;
-  dict.max_children = max_chld;         //We currently only have space allocated to hold 4 nodes
   dict.number_children = ((size_t) 1);  //We use the first child space for '..'
 
   //Get linked list pointer header
-  List *LL = off_to_pointer(fsptr, ((handler_t *) fsptr)->free_memory);
+  List *LL = off_to_ptr(fsptr, ((handler_t *) fsptr)->free_memory);
   //Call __malloc_impl() to get enough space for max_chld
   __off_t *ptr = ((__off_t *) __malloc_impl(LL, max_chld*sizeof(__off_t)));
+  //TODO: Check that ptr was allocated with the amount wanted or more, but not less
   //Save the offset to get to the children
-  dict.children = pointer_to_off(fsptr, ptr);
+  dict.children = ptr_to_off(fsptr, ptr);
   //Set first children to point to its parent
   *ptr = parent_off_t;
 }
@@ -605,17 +610,17 @@ void handler(void *fsptr, size_t fssize)
     //Save space for root directory
     //root directory is a node_t variable that starts after the handler_t object at the beginning of our file system
     handle->root_dir = sizeof(handler_t);     //Only store the offset
-    node_t *root = off_to_pointer(fsptr, handle->root_dir);
+    node_t *root = off_to_ptr(fsptr, handle->root_dir);
 
     //Set the free blocks information
     //We had use a handler_t and a node_t for the root directory
     handle->free_memory = handle->root_dir + sizeof(node_t);  //This is just the offset
-    free_block_t *fb = off_to_pointer(fsptr, handle->free_memory);
+    free_block_t *fb = off_to_ptr(fsptr, handle->free_memory);
 
     //Set everything on memory to be 0 starting at the first free block + sizeof(size_t)
     fb->size = fssize - handle->free_memory;
     memset(((void *) fb) + sizeof(size_t), 0, fb->size - sizeof(size_t));
-    fb->next_block = NULL;
+    fb->next_block = 0;
 
     //Set the root directory to be name '/' with 4 children where the parent is NULL
     make_dir_node(fsptr, root, "/", 4, 0);
@@ -649,7 +654,7 @@ char **tokenize(const char token, const char *path)
     tokens[i] = t;
     start = ++end;
   }
-  //Make array a null terminated
+  //Make array null terminated
   tokens[n_tokens] = NULL;
 
   return tokens;
@@ -662,11 +667,56 @@ void print_tokens(char **tokens)
   }
 }
 
-node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
+node_t *get_child(void *fsptr, directory_t *dict, const char *child)
 {
-  char **tokens = tokenize('/', path);
+  size_t n_children = dict->number_children;
+  __off_t *children = off_to_ptr(fsptr, dict->children);
+  node_t *node;
+
+  //Check if we need to go the parent directory
+  if (strcmp(child, "..") == 0) {
+    return ((node_t *) off_to_ptr(fsptr, children[0]));
+  }
+
+  //We start from the second children because the first one is ".." (parent)
+  for (size_t i = ((size_t) 1); i < n_children; i++) {
+    node = ((node_t *) off_to_ptr(fsptr, children[i]));
+    if (strcmp(node->name, child)) {
+      return node;
+    }
+  }
 
   return NULL;
+}
+
+node_t *path_solver(void *fsptr, const char *path, int *errnoptr)
+{
+  //Check if the path start at the root directory
+  if (*path != '/') {
+    return NULL;
+  }
+
+  //Get root directory
+  node_t *node = off_to_ptr(fsptr, ((handler_t *) fsptr)->root_dir);
+  //Break path into tokens
+  char **tokens = tokenize('/', path);
+
+  for (char *token = *tokens; token != NULL; token++) {
+    //Files cannot have children
+    if (node->is_file) {
+      return NULL;
+    }
+    //If token is "." we stay on the same directory
+    if (strcmp(token, ".") != 0) {
+      node = get_child(fsptr, &node->type.directory, token);
+      //Check that the child was successfully retrieved
+      if (node == NULL) {
+        return NULL;
+      }
+    }
+  }
+
+  return node;
 }
 /* End of helper functions */
 
