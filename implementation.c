@@ -232,6 +232,228 @@
          filesystem and try to watch it out of the filesystem.
 */
 
+/* START __malloc_impl, realloc_impl, free_impl */
+
+// BEGINNING OF STRUCTS
+
+typedef struct s_AllocateFrom {
+  size_t remaining;
+  struct s_AllocateFrom *next_space;
+} AllocateFrom;
+
+typedef struct s_List {
+  struct s_AllocateFrom *first_space;
+} List;
+
+// END OF STRUCTS
+
+// BEGINNING OF HELPER FUNCTIONS DECLARATION
+
+/* Make an AllocateFrom item using length and start and add it to the list which does it in ascending order. */
+static void add_allocation_space(List *LL, AllocateFrom *new_space);
+
+/*
+ */
+static void *get_allocation(List *LL, size_t size);
+
+// END OF HELPER FUNCTIONS DECLARATION
+
+/* Make an AllocateFrom item using length and start and add it to the list which does it in ascending order */
+static void add_allocation_space(List *LL, AllocateFrom *alloc)
+{
+  AllocateFrom *temp = LL->first_space;
+
+  //new_space address is less than the first_space in LL
+  if (temp > alloc) {
+    /* At this point we know that alloc comes before LL->first_space */
+    LL->first_space = alloc; //Update first space
+    //Check if we can merge LL->first_space and alloc
+    if ( (((char *) alloc) + sizeof(size_t) + alloc->remaining) == ((char *) temp) ) {
+      //Combine the spaces available
+      alloc->remaining += sizeof(size_t) + temp->remaining;
+      //Update pointers
+      alloc->next_space = temp->next_space;
+    }
+    //We couldn't merge so we just add it as the first_space and update pointers
+    else {
+      alloc->next_space = temp;
+    }
+  }
+  //Find after what pointer does alloc should be added
+  else {
+    //Get the last pointer that is in lower memory than alloc
+    while ( (temp->next_space != NULL) && (temp->next_space < alloc) ) {
+      temp = temp->next_space;
+    }
+    /* Merge alloc and the space after alloc */
+    //At this point, temp is before alloc and alloc is before temp->next_space. But, there is no guaranty that temp->next_space != NULL
+    AllocateFrom *after_alloc = temp->next_space;
+    if (after_alloc != NULL) {
+      //Check if we can merge alloc and after_alloc
+      if ( (((char *) alloc) + sizeof(size_t) + alloc->remaining) == ((char *) after_alloc) ) {
+        alloc->remaining += sizeof(size_t) + after_alloc->remaining;
+        alloc->next_space = after_alloc->next_space;
+      }
+      //We couldn't merge them
+      else {
+        alloc->next_space = after_alloc;
+      }
+    }
+    //alloc is the last space available in memory ascending order
+    else {
+      alloc->next_space = NULL;
+    }
+    /* Merge temp (which is before alloc) and alloc */
+    if ( (((char *) temp) + sizeof(size_t) + temp->remaining) == ((char *) alloc) ) {
+      temp->remaining += sizeof(size_t) + alloc->remaining;
+      temp->next_space = alloc->next_space;
+    }
+    //We couldn't merge them
+    else {
+      temp->next_space = alloc;
+    }
+  }
+}
+
+static void *get_allocation(List *LL, size_t size)
+{
+  AllocateFrom *alloc = LL->first_space;
+  AllocateFrom *ptr = NULL;
+
+  //If the first page have just enough space from the first_space in our LL
+  if ( (alloc->remaining >= size) && (alloc->remaining < (size+sizeof(AllocateFrom))) ) {
+    //Everything on the first space is taken so now LL point to the second space to use the first one
+    LL->first_space = alloc->next_space;
+    //Get ptr to point to the beginning of the first space to return it
+    ptr = alloc;
+  }
+  //If the first block have more space that what is asked for and it can create another AllocateFrom object without issues
+  else if (alloc->remaining > size) {
+    //LL is now pointing to what is remaining after using size
+    LL->first_space = (AllocateFrom *) (((void *) alloc) + sizeof(size_t) + size);
+    //Same pointer to second page but now on the new first_space
+    LL->first_space->next_space = alloc->next_space;
+    //Update the remaining space in first_space after using size
+    LL->first_space->remaining = alloc->remaining - size - sizeof(size_t);
+    //Update new value of alloc, which is size
+    alloc->remaining = size;
+    //Get ptr to point to the beginning of the previous first space
+    ptr = alloc;
+  }
+  //If the first page don't have enough space for what was asked
+  else {
+    //TODO: If no block can hold what is needed, we save the largest block found
+
+    //Find a node that is pointing to an space where we can get size from
+    while ( (alloc->next_space != NULL) && (alloc->next_space->remaining < size) ) {
+      alloc = alloc->next_space;
+    }
+
+    //TODO: Check if we got everything or just a portion
+    if (alloc->next_space == NULL) {
+      //
+    }
+    //If we find a valid space to get memory from
+    else {
+      //Save the space in memory that is going to be returned
+      ptr = alloc->next_space;
+      //If ptr have just enough space to hold size
+      if ( (ptr->remaining >= size) && (ptr->remaining < (size+sizeof(AllocateFrom))) ) {
+        //Everything on ptr is taken so now alloc points to what is after ptr
+        alloc->next_space = ptr->next_space;
+      }
+      //If ptr have enough space to hold size and create another AllocateFrom object
+      else {
+        //alloc is now pointing to what is remaining after using size from ptr
+        alloc->next_space = (AllocateFrom *) (((void *) ptr) + sizeof(size_t) + size);
+        //What is after alloc is now pointing to what ptr was pointing at
+        alloc->next_space->next_space = ptr->next_space;
+        //Update the remaining space in what is after alloc after using size
+        alloc->next_space->remaining = ptr->remaining - size - sizeof(size_t);
+        //Update ptr new remaining which is what it was asked for
+        ptr->remaining = size;
+      }
+    }
+  }
+
+  //Adjust ptr to not overwrite remaining variable with the number of bytes passed
+  return ((char *) ptr) + sizeof(size_t);
+}
+
+/* If size is zero, return NULL. Otherwise, call get_allocation_space with size. */
+void *__malloc_impl(List *LL, size_t size)
+{
+  if (size == ((size_t) 0)) {
+    return NULL;
+  }
+
+  return get_allocation(LL, size);
+}
+
+/* If size is less than what already assign to *ptr just lock what is after size and add it using add_allocation_space. */
+void *__realloc_impl(List *LL, void *ptr, size_t size)
+{
+  //If size is 0, we free the ptr and return NULL
+  if (size == ((size_t) 0)) {
+    __free_impl(LL, ptr);
+    return NULL;
+  }
+
+  //If ptr is NULL, realloc() is identical to a call to malloc() for size bytes.
+  if (ptr == NULL) {
+    return get_allocation(LL, size);
+  }
+
+  AllocateFrom *alloc = (AllocateFrom *) (((void *) ptr) - sizeof(size_t));
+  AllocateFrom *temp;
+
+  //If the new size is less than before but not enough to make an AllocateFrom object
+  if ( (alloc->remaining >= size) && (alloc->remaining < (size + sizeof(AllocateFrom))) ) {
+    return ptr;
+  }
+  //If the new size is less than before and we can create an AllocateFrom element to add to LL
+  else if (alloc->remaining > size) {
+    //Save what is left in temp and add it to the LL
+    temp = (AllocateFrom *) (((void *) alloc) + sizeof(size_t) + size);
+    temp->remaining = alloc->remaining - sizeof(size_t) - size;
+    temp->next_space = NULL;
+    add_allocation_space(LL, temp);
+    //Update remaining space
+    alloc->remaining = size;
+  }
+  //If we are asking for more than what we have in alloc
+  else {
+    //Get new space to copy to
+    void *new_ptr = get_allocation(LL, size);
+    //We couldn't get enough space
+    if (new_ptr == NULL) {
+      return NULL;
+    }
+    //Copy space where to copy to, so we can iterate without losing the beginning
+    memcpy(new_ptr, ptr, alloc->remaining);
+    //Put alloc back into the LL for reuse
+    add_allocation_space(LL, alloc);
+  }
+
+  return ptr;
+}
+
+/* Add space back to List using add_allocation_space */
+void __free_impl(List *LL, void *ptr)
+{
+  if (ptr == NULL) {
+    return;
+  }
+
+  //Adjust ptr so size_t before to start on the size of pointer
+  AllocateFrom *temp = (AllocateFrom *) (ptr - sizeof(size_t));
+  add_allocation_space(LL, temp);
+}
+
+/* END __malloc_impl, realloc_impl, free_impl */
+
+/* START of FUSE implementation */
+
 /* HELPER TYPES AND STRUCTS GO HERE */
 #define MYFS_MAGIC ((uint32_t) 0xCAFEBABE)
 #define NAME_MAX_LEN ((size_t) 255)
@@ -264,7 +486,8 @@ typedef struct __inode_file_t {
 } file_t;
 
 typedef struct __inode_directory_t {
-  size_t max_children;
+  //Max number of children is given at the children array location - sizeof() divided by the sizeof(node_t *)
+  //This time the header of the block of memory is exclusive of the sizeof(size_t)
   size_t number_children;
   //children is an offset to an array of offsets to folders and files. Children starts with '..' offsets
   __off_t children;
@@ -361,10 +584,11 @@ void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld,
 
   //Get linked list pointer header
   List *LL = off_to_pointer(fsptr, ((handler_t *) fsptr)->free_memory);
-  //We have a handler_t and a node_t for the root node, so the children of the root directory start after them
-  dict.children = pointer_to_off(fsptr, __malloc_impl(LL, max_chld*sizeof(__off_t)));
+  //Call __malloc_impl() to get enough space for max_chld
+  __off_t *ptr = ((__off_t *) __malloc_impl(LL, max_chld*sizeof(__off_t)));
+  //Save the offset to get to the children
+  dict.children = pointer_to_off(fsptr, ptr);
   //Set first children to point to its parent
-  __off_t *ptr = ((__off_t *) (fsptr + dict.children));
   *ptr = parent_off_t;
 }
 
@@ -391,29 +615,11 @@ void handler(void *fsptr, size_t fssize)
     //Set everything on memory to be 0 starting at the first free block + sizeof(size_t)
     fb->size = fssize - handle->free_memory;
     memset(((void *) fb) + sizeof(size_t), 0, fb->size - sizeof(size_t));
+    fb->next_block = NULL;
 
-    //Set the root directory to be name Robert with 4 children where the parent is NULL
-    make_dir_node(fsptr, root, "Robert", 4, 0);
+    //Set the root directory to be name '/' with 4 children where the parent is NULL
+    make_dir_node(fsptr, root, "/", 4, 0);
   }
-}
-
-void print_sizeof_struct()
-{
-  printf("Structs:\n");
-  printf("sizeof(free_block_t) = %zu\n", sizeof(free_block_t));
-  printf("sizeof(file_block_t) = %zu\n", sizeof(file_block_t));
-  printf("sizeof(file_t) = %zu\n", sizeof(file_t));
-  printf("sizeof(directory_t) = %zu\n", sizeof(directory_t));
-  printf("sizeof(my_time) = %zu\n", sizeof(my_time));
-  printf("sizeof(node_t) = %zu\n", sizeof(node_t));
-
-  printf("\nNode attribute:\n");
-  node_t node;
-
-  printf("sizeof(node.name) = %zu\n", sizeof(node.name));
-  printf("sizeof(node.is_file) = %zu\n", sizeof(node.is_file));
-  printf("sizeof(node.times) = %zu\n", sizeof(node.times));
-  printf("sizeof(node.type) = %zu\n", sizeof(node.type));
 }
 
 char **tokenize(const char token, const char *path)
@@ -835,4 +1041,6 @@ int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statv
   /* STUB */
   return -1;
 }
+
+/* END of FUSE implementation */
 
