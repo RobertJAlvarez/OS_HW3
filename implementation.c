@@ -576,17 +576,22 @@ void update_time(node_t *node, int new_node)
   }
 }
 
+List *get_free_memory_ptr(void *fsptr)
+{
+  return off_to_ptr(fsptr, ((handler_t *) fsptr)->free_memory);
+}
+
 void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld, __off_t parent_off_t)
 {
   memset(node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
-  memcpy(node->name, name, strlen(name)); //Copy given name into node->name
+  memcpy(node->name, name, strlen(name)); //Copy given name into node->name, memcpy(dst,src,n_bytes)
   node->is_file = 0;
   update_time(node, 1);
   directory_t dict = node->type.directory;
   dict.number_children = ((size_t) 1);  //We use the first child space for '..'
 
   //Get linked list pointer header
-  List *LL = off_to_ptr(fsptr, ((handler_t *) fsptr)->free_memory);
+  List *LL = get_free_memory_ptr(fsptr);
   //Call __malloc_impl() to get enough space for max_chld
   __off_t *ptr = ((__off_t *) __malloc_impl(LL, max_chld*sizeof(__off_t)));
   //TODO: Check that ptr was allocated with the amount wanted or more, but not less
@@ -916,7 +921,36 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
     return -1;
   }
 
-  //Make the node and put it in the node
+  List *LL = get_free_memory_ptr(fsptr);
+  __off_t *children = &dict->children;
+  free_block_t *block = (((void *) children) - sizeof(size_t));
+  //Make the node and put it in the directory child list
+  // First check if the directory list have free places to added nodes to
+  //  Amount of memory allocated doesn't count the sizeof(size_t) as withing the available size
+  size_t max_children = (block->size)/sizeof(__off_t);
+  if (max_children == dict->number_children) {
+    //Make more space for another children
+    block = __realloc_impl(LL, block, block->size*2);
+    //Check if malloc was successful
+    if (((block->size)/sizeof(__off_t)) == dict->number_children) {
+      //TODO: refuse to add the file
+      return -1;
+    }
+  }
+
+  //Make a node for the file with size of 0
+  node_t *file_node = (node_t *) __malloc_impl(LL, sizeof(node_t));
+  memset(file_node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
+  memcpy(file_node->name, filename, len); //Copy given name into node->name, memcpy(dst,src,n_bytes)
+  node->is_file = 1;
+  update_time(node, 1);
+  file_t file = node->type.file;
+  file.total_size = 0;
+  file.first_file_block = 0;
+
+  //Add file node to directory children
+  children[dict->number_children] = ptr_to_off(fsptr, file_node);
+  dict->number_children++;
 
   return 0;
 }
