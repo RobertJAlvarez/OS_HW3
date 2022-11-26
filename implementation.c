@@ -40,195 +40,129 @@
 #include <stdio.h>
 #include "implementation.h"
 
-/* The filesystem you implement must support all the 13 operations
-   stubbed out below. There need not be support for access rights,
-   links, symbolic links. There needs to be support for access and
-   modification times and information for statfs.
+/* The filesystem you implement must support all the 13 operations stubbed out below. There need not be support for access rights,
+   links, symbolic links. There needs to be support for access and modification times and information for statfs.
 
-   The filesystem must run in memory, using the memory of size 
-   fssize pointed to by fsptr. The memory comes from mmap and 
-   is backed with a file if a backup-file is indicated. When
-   the filesystem is unmounted, the memory is written back to 
-   that backup-file. When the filesystem is mounted again from
-   the backup-file, the same memory appears at the newly mapped
-   in virtual address. The filesystem datastructures hence must not
-   store any pointer directly to the memory pointed to by fsptr; it
+   The filesystem must run in memory, using the memory of size fssize pointed to by fsptr. The memory comes from mmap and 
+   is backed with a file if a backup-file is indicated. When the filesystem is unmounted, the memory is written back to 
+   that backup-file. When the filesystem is mounted again from the backup-file, the same memory appears at the newly mapped
+   in virtual address. The filesystem datastructures hence must not store any pointer directly to the memory pointed to by fsptr; it
    must rather store offsets from the beginning of the memory region.
 
-   When a filesystem is mounted for the first time, the whole memory
-   region of size fssize pointed to by fsptr reads as zero-bytes. When
-   a backup-file is used and the filesystem is mounted again, certain
-   parts of the memory, which have previously been written, may read
-   as non-zero bytes. The size of the memory region is at least 2048
-   bytes.
+   When a filesystem is mounted for the first time, the whole memory region of size fssize pointed to by fsptr reads as zero-bytes. When
+   a backup-file is used and the filesystem is mounted again, certain parts of the memory, which have previously been written, may read
+   as non-zero bytes. The size of the memory region is at least 2048 bytes.
 
    CAUTION:
 
-   * You MUST NOT use any global variables in your program for reasons
-   due to the way FUSE is designed.
+   * You MUST NOT use any global variables in your program for reasons due to the way FUSE is designed.
 
-   You can find ways to store a structure containing all "global" data
-   at the start of the memory region representing the filesystem.
+   You can find ways to store a structure containing all "global" data at the start of the memory region representing the filesystem.
 
-   * You MUST NOT store (the value of) pointers into the memory region
-   that represents the filesystem. Pointers are virtual memory
-   addresses and these addresses are ephemeral. Everything will seem
-   okay UNTIL you remount the filesystem again.
+   * You MUST NOT store (the value of) pointers into the memory region that represents the filesystem. Pointers are virtual memory
+   addresses and these addresses are ephemeral. Everything will seem okay UNTIL you remount the filesystem again.
 
-   You may store offsets/indices (of type size_t) into the
-   filesystem. These offsets/indices are like pointers: instead of
-   storing the pointer, you store how far it is away from the start of
-   the memory region. You may want to define a type for your offsets
-   and to write two functions that can convert from pointers to
-   offsets and vice versa.
+   You may store offsets/indices (of type size_t) into the filesystem. These offsets/indices are like pointers: instead of
+   storing the pointer, you store how far it is away from the start of the memory region. You may want to define a type for your offsets
+   and to write two functions that can convert from pointers to offsets and vice versa.
 
-   * You may use any function out of libc for your filesystem,
-   including (but not limited to) malloc, calloc, free, strdup,
-   strlen, strncpy, strchr, strrchr, memset, memcpy. However, your
-   filesystem MUST NOT depend on memory outside of the filesystem
-   memory region. Only this part of the virtual memory address space
-   gets saved into the backup-file. As a matter of course, your FUSE
-   process, which implements the filesystem, MUST NOT leak memory: be
-   careful in particular not to leak tiny amounts of memory that
-   accumulate over time. In a working setup, a FUSE process is
-   supposed to run for a long time!
+   * You may use any function out of libc for your filesystem, including (but not limited to) malloc, calloc, free, strdup,
+   strlen, strncpy, strchr, strrchr, memset, memcpy. However, your filesystem MUST NOT depend on memory outside of the filesystem
+   memory region. Only this part of the virtual memory address space gets saved into the backup-file. As a matter of course, your FUSE
+   process, which implements the filesystem, MUST NOT leak memory: be careful in particular not to leak tiny amounts of memory that
+   accumulate over time. In a working setup, a FUSE process is supposed to run for a long time!
 
-   It is possible to check for memory leaks by running the FUSE
-   process inside valgrind:
+   It is possible to check for memory leaks by running the FUSE process inside valgrind:
 
    valgrind --leak-check=full ./myfs --backupfile=test.myfs ~/fuse-mnt/ -f
 
-   However, the analysis of the leak indications displayed by valgrind
-   is difficult as libfuse contains some small memory leaks (which do
-   not accumulate over time). We cannot (easily) fix these memory
-   leaks inside libfuse.
+   However, the analysis of the leak indications displayed by valgrind is difficult as libfuse contains some small memory leaks (which do
+   not accumulate over time). We cannot (easily) fix these memory leaks inside libfuse.
 
-   * Avoid putting debug messages into the code. You may use fprintf
-   for debugging purposes but they should all go away in the final
+   * Avoid putting debug messages into the code. You may use fprintf for debugging purposes but they should all go away in the final
    version of the code. Using gdb is more professional, though.
 
-   * You MUST NOT fail with exit(1) in case of an error. All the
-   functions you have to implement have ways to indicated failure
-   cases. Use these, mapping your internal errors intelligently onto
-   the POSIX error conditions.
+   * You MUST NOT fail with exit(1) in case of an error. All the functions you have to implement have ways to indicated failure
+   cases. Use these, mapping your internal errors intelligently onto the POSIX error conditions.
 
    * And of course: your code MUST NOT SEGFAULT!
 
    It is reasonable to proceed in the following order:
 
-   (1)   Design and implement a mechanism that initializes a filesystem
-         whenever the memory space is fresh. That mechanism can be
-         implemented in the form of a filesystem handle into which the
-         filesystem raw memory pointer and sizes are translated.
-         Check that the filesystem does not get reinitialized at mount
-         time if you initialized it once and unmounted it but that all
-         pieces of information (in the handle) get read back correctly
-         from the backup-file. 
+   (1)   Design and implement a mechanism that initializes a filesystem whenever the memory space is fresh. That mechanism can be
+         implemented in the form of a filesystem handle into which the filesystem raw memory pointer and sizes are translated.
+         Check that the filesystem does not get reinitialized at mount time if you initialized it once and unmounted it but that all
+         pieces of information (in the handle) get read back correctly from the backup-file. 
 
-   (2)   Design and implement functions to find and allocate free memory
-         regions inside the filesystem memory space. There need to be 
-         functions to free these regions again, too. Any "global" variable
-         goes into the handle structure the mechanism designed at step (1) 
+   (2)   Design and implement functions to find and allocate free memory regions inside the filesystem memory space. There need to be 
+         functions to free these regions again, too. Any "global" variable goes into the handle structure the mechanism designed at step (1) 
          provides.
 
-   (3)   Carefully design a data structure able to represent all the
-         pieces of information that are needed for files and
-         (sub-)directories.  You need to store the location of the
-         root directory in a "global" variable that, again, goes into the 
+   (3)   Carefully design a data structure able to represent all the pieces of information that are needed for files and
+         (sub-)directories.  You need to store the location of the root directory in a "global" variable that, again, goes into the 
          handle designed at step (1).
 
-   (4)   Write __myfs_getattr_implem and debug it thoroughly, as best as
-         you can with a filesystem that is reduced to one
-         function. Writing this function will make you write helper
-         functions to traverse paths, following the appropriate
-         subdirectories inside the file system. Strive for modularity for
-         these filesystem traversal functions.
+   (4)   Write __myfs_getattr_implem and debug it thoroughly, as best as you can with a filesystem that is reduced to one
+         function. Writing this function will make you write helper functions to traverse paths, following the appropriate
+         subdirectories inside the file system. Strive for modularity for these filesystem traversal functions.
 
-   (5)   Design and implement __myfs_readdir_implem. You cannot test it
-         besides by listing your root directory with ls -la and looking
-         at the date of last access/modification of the directory (.). 
-         Be sure to understand the signature of that function and use
+   (5)   Design and implement __myfs_readdir_implem. You cannot test it besides by listing your root directory with ls -la and looking
+         at the date of last access/modification of the directory (.). Be sure to understand the signature of that function and use
          caution not to provoke segfaults nor to leak memory.
 
-   (6)   Design and implement __myfs_mknod_implem. You can now touch files 
-         with 
+   (6)   Design and implement __myfs_mknod_implem. You can now touch files with 
 
          touch foo
 
-         and check that they start to exist (with the appropriate
-         access/modification times) with ls -la.
+         and check that they start to exist (with the appropriate access/modification times) with ls -la.
 
    (7)   Design and implement __myfs_mkdir_implem. Test as above.
 
-   (8)   Design and implement __myfs_truncate_implem. You can now 
-         create files filled with zeros:
+   (8)   Design and implement __myfs_truncate_implem. You can now create files filled with zeros:
 
          truncate -s 1024 foo
 
-   (9)   Design and implement __myfs_statfs_implem. Test by running
-         df before and after the truncation of a file to various lengths. 
+   (9)   Design and implement __myfs_statfs_implem. Test by running df before and after the truncation of a file to various lengths. 
          The free "disk" space must change accordingly.
 
-   (10)  Design, implement and test __myfs_utimens_implem. You can now 
-         touch files at different dates (in the past, in the future).
+   (10)  Design, implement and test __myfs_utimens_implem. You can now touch files at different dates (in the past, in the future).
 
-   (11)  Design and implement __myfs_open_implem. The function can 
-         only be tested once __myfs_read_implem and __myfs_write_implem are
+   (11)  Design and implement __myfs_open_implem. The function can only be tested once __myfs_read_implem and __myfs_write_implem are
          implemented.
 
-   (12)  Design, implement and test __myfs_read_implem and
-         __myfs_write_implem. You can now write to files and read the data 
-         back:
+   (12)  Design, implement and test __myfs_read_implem and __myfs_write_implem. You can now write to files and read the data back:
 
          echo "Hello world" > foo
          echo "Hallo ihr da" >> foo
          cat foo
 
-         Be sure to test the case when you unmount and remount the
-         filesystem: the files must still be there, contain the same
-         information and have the same access and/or modification
-         times.
+         Be sure to test the case when you unmount and remount the filesystem: the files must still be there, contain the same
+         information and have the same access and/or modification times.
 
-   (13)  Design, implement and test __myfs_unlink_implem. You can now
-         remove files.
+   (13)  Design, implement and test __myfs_unlink_implem. You can now remove files.
 
-   (14)  Design, implement and test __myfs_unlink_implem. You can now
-         remove directories.
+   (14)  Design, implement and test __myfs_unlink_implem. You can now remove directories.
 
-   (15)  Design, implement and test __myfs_rename_implem. This function
-         is extremely complicated to implement. Be sure to cover all 
-         cases that are documented in man 2 rename. The case when the 
-         new path exists already is really hard to implement. Be sure to 
-         never leave the filessystem in a bad state! Test thoroughly 
-         using mv on (filled and empty) directories and files onto 
+   (15)  Design, implement and test __myfs_rename_implem. This function is extremely complicated to implement. Be sure to cover all 
+         cases that are documented in man 2 rename. The case when the new path exists already is really hard to implement. Be sure to 
+         never leave the filessystem in a bad state! Test thoroughly using mv on (filled and empty) directories and files onto 
          inexistant and already existing directories and files.
 
-   (16)  Design, implement and test any function that your instructor
-         might have left out from this list. There are 13 functions 
+   (16)  Design, implement and test any function that your instructor might have left out from this list. There are 13 functions 
          __myfs_XXX_implem you have to write.
 
-   (17)  Go over all functions again, testing them one-by-one, trying
-         to exercise all special conditions (error conditions): set
-         breakpoints in gdb and use a sequence of bash commands inside
-         your mounted filesystem to trigger these special cases. Be
-         sure to cover all funny cases that arise when the filesystem
-         is full but files are supposed to get written to or truncated
-         to longer length. There must not be any segfault; the user
-         space program using your filesystem just has to report an
-         error. Also be sure to unmount and remount your filesystem,
-         in order to be sure that it contents do not change by
-         unmounting and remounting. Try to mount two of your
-         filesystems at different places and copy and move (rename!)
-         (heavy) files (your favorite movie or song, an image of a cat
-         etc.) from one mount-point to the other. None of the two FUSE
-         processes must provoke errors. Find ways to test the case
-         when files have holes as the process that wrote them seeked
-         beyond the end of the file several times. Your filesystem must
-         support these operations at least by making the holes explicit 
+   (17)  Go over all functions again, testing them one-by-one, trying to exercise all special conditions (error conditions): set
+         breakpoints in gdb and use a sequence of bash commands inside your mounted filesystem to trigger these special cases. Be
+         sure to cover all funny cases that arise when the filesystem is full but files are supposed to get written to or truncated
+         to longer length. There must not be any segfault; the user space program using your filesystem just has to report an
+         error. Also be sure to unmount and remount your filesystem, in order to be sure that it contents do not change by
+         unmounting and remounting. Try to mount two of your filesystems at different places and copy and move (rename!)
+         (heavy) files (your favorite movie or song, an image of a cat etc.) from one mount-point to the other. None of the two FUSE
+         processes must provoke errors. Find ways to test the case when files have holes as the process that wrote them seeked
+         beyond the end of the file several times. Your filesystem must support these operations at least by making the holes explicit 
          zeros (use dd to test this aspect).
 
-   (18)  Run some heavy testing: copy your favorite movie into your
-         filesystem and try to watch it out of the filesystem.
+   (18)  Run some heavy testing: copy your favorite movie into your filesystem and try to watch it out of the filesystem.
 */
 
 /* START __malloc_impl, realloc_impl, free_impl */
@@ -585,8 +519,8 @@ void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld,
 {
   memset(node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
   memcpy(node->name, name, strlen(name)); //Copy given name into node->name, memcpy(dst,src,n_bytes)
-  node->is_file = 0;
   update_time(node, 1);
+  node->is_file = 0;
   directory_t *dict = &node->type.directory;
   dict->number_children = ((size_t) 1);  //We use the first child space for '..'
 
@@ -759,6 +693,96 @@ node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens)
   return node;
 }
 
+node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
+{
+  //Call path solver without the last node name because that is the file name if valid path name is given
+  node_t *parent_node = path_solver(fsptr, path, 1);
+
+  //Check that the file parent exist
+  if (parent_node == NULL) {
+    //TODO: set errnoptr
+    return NULL;
+  }
+
+  //Check that the node returned is a directory
+  if (parent_node->is_file) {
+    //TODO: set errnoptr
+    return NULL;
+  }
+
+  //Get directory from node
+  directory_t *dict = &parent_node->type.directory;
+
+  //Get last token which have the filename
+  unsigned long len;
+  char *new_node_name = get_last_token(path,&len);
+
+  //Check that the parent don't contain a node with the same name as the one we are about to create
+  if (get_node(fsptr,dict,new_node_name) != NULL) {
+    //TODO: set errnoptr
+    return NULL;
+  }
+
+  //Check that the name is between 1 and 255 characters long
+  len = strlen(new_node_name);
+  if ( (len == 0) || (len > 255) ) {
+    //TODO: set errnoptr
+    return NULL;
+  }
+
+  List *LL = get_free_memory_ptr(fsptr);
+  __off_t *children = &dict->children;
+  free_block_t *block = (((void *) children) - sizeof(size_t));
+
+  //Make the node and put it in the directory child list
+  // First check if the directory list have free places to added nodes to
+  //  Amount of memory allocated doesn't count the sizeof(size_t) as withing the available size
+  size_t max_children = (block->size)/sizeof(__off_t);
+  if (max_children == dict->number_children) {
+    //Make more space for another children
+    block = __realloc_impl(LL, block, block->size*2);
+    //Check if malloc was successful
+    if (((block->size)/sizeof(__off_t)) == dict->number_children) {
+      //TODO: refuse to add the file
+      return NULL;
+    }
+  }
+
+  node_t *new_node = (node_t *) __malloc_impl(LL, sizeof(node_t));
+  memset(new_node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
+  memcpy(new_node->name, new_node_name, len); //Copy given name into node->name, memcpy(dst,src,n_bytes)
+  update_time(new_node, 1);
+
+  //Add file node to directory children
+  children[dict->number_children] = ptr_to_off(fsptr, new_node);
+  dict->number_children++;
+  update_time(parent_node, 1);
+
+  if (isfile) {
+    //Make a node for the file with size of 0
+    new_node->is_file = 1;
+    file_t *file = &new_node->type.file;
+    file->total_size = 0;
+    file->first_file_block = 0;
+  }
+  else {
+    //Make a node for the file with size of 0
+    new_node->is_file = 0;
+    dict = &new_node->type.directory;
+    dict->number_children = ((size_t) 1);  //We use the first child space for '..'
+
+    //Call __malloc_impl() to get enough space for 4 children
+    __off_t *ptr = ((__off_t *) __malloc_impl(LL, 4*sizeof(__off_t)));
+    //TODO: Check that ptr was allocated with the amount wanted or more, but not less
+    //Save the offset to get to the children
+    dict->children = ptr_to_off(fsptr, ptr);
+    //Set first children to point to its parent
+    *ptr = ptr_to_off(fsptr, parent_node);
+  }
+
+  return new_node;
+}
+
 void free_file_info(void *fsptr, file_t *file)
 {
   file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
@@ -778,26 +802,26 @@ void free_file_info(void *fsptr, file_t *file)
   }
 }
 
-void remove_node(void *fsptr, directory_t *dict, node_t *file_node)
+void remove_node(void *fsptr, directory_t *dict, node_t *node)
 {
   //TODO: Iterate over the files in dict and remove the file_node which we assume to be already free by calling free_file_info with &file_node->type.file
   size_t n_children = dict->number_children;
   __off_t *children = off_to_ptr(fsptr, dict->children);
   size_t idx;
-  __off_t file_node_off = ptr_to_off(fsptr, file_node);
+  __off_t node_off = ptr_to_off(fsptr, node);
 
   //Find the idx where the node is at
   for (idx = 1; idx < n_children; idx++) {
-    if (children[idx] == file_node_off) {
+    if (children[idx] == node_off) {
       break;
     }
   }
 
   //File must be at idx
   List *LL = get_free_memory_ptr(fsptr);
-  __free_impl(LL, file_node);
+  __free_impl(LL, node);
 
-  //Move the remaining nodes one to the left to cover the file_node remove
+  //Move the remaining nodes one to the left to cover the node remove
   for ( ; idx < n_children-1; idx++) {
     children[idx] = children[idx+1];
   }
@@ -811,19 +835,15 @@ void remove_node(void *fsptr, directory_t *dict, node_t *file_node)
 }
 /* End of helper functions */
 
-/* Implements an emulation of the stat system call on the filesystem 
-   of size fssize pointed to by fsptr. 
+/* Implements an emulation of the stat system call on the filesystem of size fssize pointed to by fsptr. 
 
-   If path can be followed and describes a file or directory 
-   that exists and is accessable, the access information is 
+   If path can be followed and describes a file or directory that exists and is accessable, the access information is 
    put into stbuf. 
 
-   On success, 0 is returned. On failure, -1 is returned and 
-   the appropriate error code is put into *errnoptr.
+   On success, 0 is returned. On failure, -1 is returned and the appropriate error code is put into *errnoptr.
 
-   man 2 stat documents all possible error codes and gives more detail
-   on what fields of stbuf need to be filled in. Essentially, only the
-   following fields need to be supported:
+   man 2 stat documents all possible error codes and gives more detail on what fields of stbuf need to be filled in. Essentially,
+   only the following fields need to be supported:
 
    st_uid      the value passed in argument
    st_gid      the value passed in argument
@@ -842,40 +862,28 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
   return -1;
 }
 
-/* Implements an emulation of the readdir system call on the filesystem 
-   of size fssize pointed to by fsptr. 
+/* Implements an emulation of the readdir system call on the filesystem of size fssize pointed to by fsptr. 
 
-   If path can be followed and describes a directory that exists and
-   is accessable, the names of the subdirectories and files 
-   contained in that directory are output into *namesptr. The . and ..
-   directories must not be included in that listing.
+   If path can be followed and describes a directory that exists and is accessable, the names of the subdirectories and files 
+   contained in that directory are output into *namesptr. The . and .. directories must not be included in that listing.
 
-   If it needs to output file and subdirectory names, the function
-   starts by allocating (with calloc) an array of pointers to
-   characters of the right size (n entries for n names). Sets
-   *namesptr to that pointer. It then goes over all entries
-   in that array and allocates, for each of them an array of
-   characters of the right size (to hold the i-th name, together 
-   with the appropriate '\0' terminator). It puts the pointer
-   into that i-th array entry and fills the allocated array
-   of characters with the appropriate name. The calling function
-   will call free on each of the entries of *namesptr and 
+   If it needs to output file and subdirectory names, the function starts by allocating (with calloc) an array of pointers to
+   characters of the right size (n entries for n names). Sets *namesptr to that pointer. It then goes over all entries
+   in that array and allocates, for each of them an array of characters of the right size (to hold the i-th name, together 
+   with the appropriate '\0' terminator). It puts the pointer into that i-th array entry and fills the allocated array
+   of characters with the appropriate name. The calling function will call free on each of the entries of *namesptr and 
    on *namesptr.
 
-   The function returns the number of names that have been 
-   put into namesptr. 
+   The function returns the number of names that have been put into namesptr. 
 
-   If no name needs to be reported because the directory does
-   not contain any file or subdirectory besides . and .., 0 is 
+   If no name needs to be reported because the directory does not contain any file or subdirectory besides . and .., 0 is 
    returned and no allocation takes place.
 
-   On failure, -1 is returned and the *errnoptr is set to 
-   the appropriate error code. 
+   On failure, -1 is returned and the *errnoptr is set to the appropriate error code. 
 
    The error codes are documented in man 2 readdir.
 
-   In the case memory allocation with malloc/calloc fails, failure is
-   indicated by returning -1 and setting *errnoptr to EINVAL.
+   In the case memory allocation with malloc/calloc fails, failure is indicated by returning -1 and setting *errnoptr to EINVAL.
 */
 int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char ***namesptr)
 {
@@ -920,13 +928,11 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
   return ((int) n_children);
 }
 
-/* Implements an emulation of the mknod system call for regular files
-   on the filesystem of size fssize pointed to by fsptr.
+/* Implements an emulation of the mknod system call for regular files on the filesystem of size fssize pointed to by fsptr.
 
    This function is called only for the creation of regular files.
 
-   If a file gets created, it is of size zero and has default
-   ownership and mode bits.
+   If a file gets created, it is of size zero and has default ownership and mode bits.
 
    The call creates the file indicated by path.
 
@@ -938,76 +944,18 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 */
 int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  //Call path solver without the last node name because that is the file name if valid path name is given
-  node_t *node = path_solver(fsptr, path, 1);
+  //Make a directory, 1 because it is a file
+  node_t *node = make_inode(fsptr, path, errnoptr, 1);
 
-  //Check that the file parent exist
+  //Check if the node was successfully created, if it wasn't the errnoptr was already set so we just return failure with -1
   if (node == NULL) {
-    //TODO: set errnoptr
     return -1;
   }
-
-  //Check that the node returned is a directory
-  if (node->is_file) {
-    //TODO: set errnoptr
-    return -1;
-  }
-
-  //Get directory from node
-  directory_t *dict = &node->type.directory;
-
-  //Get last token which have the filename
-  unsigned long len;
-  char *filename = get_last_token(path,&len);
-
-  //Check that the parent don't contain a node with the same name as the one we are about to create
-  if (get_node(fsptr,dict,filename) != NULL) {
-    //TODO: set errnoptr
-    return -1;
-  }
-
-  //Check that the filename is between 1 and 255 characters long
-  if ( (len == 0) || (len > 255) ) {
-    //TODO: set errnoptr
-    return -1;
-  }
-
-  List *LL = get_free_memory_ptr(fsptr);
-  __off_t *children = &dict->children;
-  free_block_t *block = (((void *) children) - sizeof(size_t));
-  //Make the node and put it in the directory child list
-  // First check if the directory list have free places to added nodes to
-  //  Amount of memory allocated doesn't count the sizeof(size_t) as withing the available size
-  size_t max_children = (block->size)/sizeof(__off_t);
-  if (max_children == dict->number_children) {
-    //Make more space for another children
-    block = __realloc_impl(LL, block, block->size*2);
-    //Check if malloc was successful
-    if (((block->size)/sizeof(__off_t)) == dict->number_children) {
-      //TODO: refuse to add the file
-      return -1;
-    }
-  }
-
-  //Make a node for the file with size of 0
-  node_t *file_node = (node_t *) __malloc_impl(LL, sizeof(node_t));
-  memset(file_node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
-  memcpy(file_node->name, filename, len); //Copy given name into node->name, memcpy(dst,src,n_bytes)
-  node->is_file = 1;
-  update_time(node, 1);
-  file_t *file = &node->type.file;
-  file->total_size = 0;
-  file->first_file_block = 0;
-
-  //Add file node to directory children
-  children[dict->number_children] = ptr_to_off(fsptr, file_node);
-  dict->number_children++;
 
   return 0;
 }
 
-/* Implements an emulation of the unlink system call for regular files
-   on the filesystem of size fssize pointed to by fsptr.
+/* Implements an emulation of the unlink system call for regular files on the filesystem of size fssize pointed to by fsptr.
 
    This function is called only for the deletion of regular files.
 
@@ -1061,14 +1009,12 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
   remove_node(fsptr, dict, file_node);
 
   //Free file_node
-  get_free_memory_ptr(fsptr);
   __free_impl(get_free_memory_ptr(fsptr), file_node);
 
   return 0;
 }
 
-/* Implements an emulation of the rmdir system call on the filesystem 
-   of size fssize pointed to by fsptr. 
+/* Implements an emulation of the rmdir system call on the filesystem of size fssize pointed to by fsptr. 
 
    The call deletes the directory indicated by path.
 
@@ -1076,8 +1022,8 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 
    On failure, -1 is returned and *errnoptr is set appropriately.
 
-   The function call must fail when the directory indicated by path is
-   not empty (if there are files or subdirectories other than . and ..).
+   The function call must fail when the directory indicated by path is not empty (if there are files or subdirectories
+   other than . and ..).
 
    The error codes are documented in man 2 rmdir.
 */
@@ -1087,44 +1033,41 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
   //TODO: Fix the algorithm
   node_t *node = path_solver(fsptr, path, 0);
 
+  //Check that the node exist
   if (node == NULL){
     *errnoptr = ENOENT;
     return -1;
   }
 
-  for (int i = 0; i < sizeof(node->name); i++){
-    //Check if the next char in the name is null character
-    if (node->name[i+1] == '\0') {
-      *errnoptr = EISDIR;
-      return -1;
-    }
-
-    //Check that the name does not have a forward slash
-    if (node->name[i] == '/'){
-      *errnoptr = EISDIR;
-      return -1;
-    }
-
-    if (node->name[i] == '.' || (node->name[i] == '.' && node->name[i+1] == '.')){
-      //TODO: CHANGE ERROR POINTER
-      return -1;
-    }
-
-    //Check that the name is not greated than 256
-    if (node->name[i] == ' ' && node->name[i+1] == ' ') {
-      //Update number of children for directory
-      if (node->type.directory.number_children != 0){
-        *errnoptr = ENOTEMPTY;
-        return -1;
-      }
-    }
+  //Check that the node returned is not a file
+  if (node->is_file) {
+    //TODO: set errnoptr
+    return -1;
   }
+
+  //Check that the directory is empty (only the parent can be there "..")
+  directory_t *dict = &node->type.directory;
+  if (dict->number_children != 1) {
+    *errnoptr = ENOTEMPTY;
+    return -1;
+  }
+
+  //Get parent directory
+  __off_t *children = off_to_ptr(fsptr, dict->children);
+  node_t *parent_node = off_to_ptr(fsptr, *children);
+
+  //Free children of node and the node itself
+  List *LL = get_free_memory_ptr(fsptr);
+  __free_impl(LL, children);
+  __free_impl(LL, node);
+
+  //Remove directory from parent directory
+  remove_node(fsptr, &parent_node->type.directory, node);
 
   return 0;
 }
 
-/* Implements an emulation of the mkdir system call on the filesystem 
-   of size fssize pointed to by fsptr. 
+/* Implements an emulation of the mkdir system call on the filesystem of size fssize pointed to by fsptr. 
 
    The call creates the directory indicated by path.
 
@@ -1134,15 +1077,20 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 
    The error codes are documented in man 2 mkdir.
 */
-
 int __myfs_mkdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-  /* STUB */
-  return -1;
+  //Make a directory, 0 because it is not a file
+  node_t *node = make_inode(fsptr, path, errnoptr, 0);
+
+  //Check if the node was successfully created, if it wasn't the errnoptr was already set so we just return failure with -1
+  if (node == NULL) {
+    return -1;
+  }
+
+  return 0;
 }
 
-/* Implements an emulation of the rename system call on the filesystem 
-   of size fssize pointed to by fsptr. 
+/* Implements an emulation of the rename system call on the filesystem of size fssize pointed to by fsptr. 
 
    The call moves the file or directory indicated by from to to.
 
@@ -1150,8 +1098,7 @@ int __myfs_mkdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 
    On failure, -1 is returned and *errnoptr is set appropriately.
 
-   Caution: the function does more than what is hinted to by its name.
-   In cases the from and to paths differ, the file is moved out of 
+   Caution: the function does more than what is hinted to by its name. In cases the from and to paths differ, the file is moved out of 
    the from path and added to the to path.
 
    The error codes are documented in man 2 rename.
@@ -1162,14 +1109,11 @@ int __myfs_rename_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
   return -1;
 }
 
-/* Implements an emulation of the truncate system call on the filesystem 
-   of size fssize pointed to by fsptr. 
+/* Implements an emulation of the truncate system call on the filesystem of size fssize pointed to by fsptr. 
 
-   The call changes the size of the file indicated by path to offset
-   bytes.
+   The call changes the size of the file indicated by path to offset bytes.
 
-   When the file becomes smaller due to the call, the extending bytes are
-   removed. When it becomes larger, zeros are appended.
+   When the file becomes smaller due to the call, the extending bytes are removed. When it becomes larger, zeros are appended.
 
    On success, 0 is returned.
 
@@ -1183,12 +1127,10 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
   return -1;
 }
 
-/* Implements an emulation of the open system call on the filesystem 
-   of size fssize pointed to by fsptr, without actually performing the opening
-   of the file (no file descriptor is returned).
+/* Implements an emulation of the open system call on the filesystem  of size fssize pointed to by fsptr, without actually performing
+   the opening of the file (no file descriptor is returned).
 
-   The call just checks if the file (or directory) indicated by path
-   can be accessed, i.e. if the path can be followed to an existing
+   The call just checks if the file (or directory) indicated by path can be accessed, i.e. if the path can be followed to an existing
    object for which the access rights are granted.
 
    On success, 0 is returned.
@@ -1199,11 +1141,9 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 
    * EFAULT: the filesystem is in a bad state, we can't do anything
 
-   * ENOENT: the file that we are supposed to open doesn't exist (or a
-             subpath).
+   * ENOENT: the file that we are supposed to open doesn't exist (or a subpath).
 
-   It is possible to restrict ourselves to only these two error
-   conditions. It is also possible to implement more detailed error
+   It is possible to restrict ourselves to only these two error conditions. It is also possible to implement more detailed error
    condition answers.
 
    The error codes are documented in man 2 open.
@@ -1223,15 +1163,12 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   return node->is_file ? 0 : -1;
 }
 
-/* Implements an emulation of the read system call on the filesystem 
-   of size fssize pointed to by fsptr.
+/* Implements an emulation of the read system call on the filesystem of size fssize pointed to by fsptr.
 
-   The call copies up to size bytes from the file indicated by 
-   path into the buffer, starting to read at offset. See the man page
+   The call copies up to size bytes from the file indicated by path into the buffer, starting to read at offset. See the man page
    for read for the details when offset is beyond the end of the file etc.
-   
-   On success, the appropriate number of bytes read into the buffer is
-   returned. The value zero is returned on an end-of-file condition.
+
+   On success, the appropriate number of bytes read into the buffer is returned. The value zero is returned on an end-of-file condition.
 
    On failure, -1 is returned and *errnoptr is set appropriately.
 
@@ -1243,15 +1180,12 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   return -1;
 }
 
-/* Implements an emulation of the write system call on the filesystem 
-   of size fssize pointed to by fsptr.
+/* Implements an emulation of the write system call on the filesystem of size fssize pointed to by fsptr.
 
-   The call copies up to size bytes to the file indicated by 
-   path into the buffer, starting to write at offset. See the man page
+   The call copies up to size bytes to the file indicated by path into the buffer, starting to write at offset. See the man page
    for write for the details when offset is beyond the end of the file etc.
-   
-   On success, the appropriate number of bytes written into the file is
-   returned. The value zero is returned on an end-of-file condition.
+
+   On success, the appropriate number of bytes written into the file is returned. The value zero is returned on an end-of-file condition.
 
    On failure, -1 is returned and *errnoptr is set appropriately.
 
@@ -1263,11 +1197,9 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
   return -1;
 }
 
-/* Implements an emulation of the utimensat system call on the filesystem 
-   of size fssize pointed to by fsptr.
+/* Implements an emulation of the utimensat system call on the filesystem of size fssize pointed to by fsptr.
 
-   The call changes the access and modification times of the file
-   or directory indicated by path to the values in ts.
+   The call changes the access and modification times of the file or directory indicated by path to the values in ts.
 
    On success, 0 is returned.
 
@@ -1281,11 +1213,9 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
   return -1;
 }
 
-/* Implements an emulation of the statfs system call on the filesystem 
-   of size fssize pointed to by fsptr.
+/* Implements an emulation of the statfs system call on the filesystem of size fssize pointed to by fsptr.
 
-   The call gets information of the filesystem usage and puts in 
-   into stbuf.
+   The call gets information of the filesystem usage and puts in into stbuf.
 
    On success, 0 is returned.
 
@@ -1293,15 +1223,13 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 
    The error codes are documented in man 2 statfs.
 
-   Essentially, only the following fields of struct statvfs need to be
-   supported:
+   Essentially, only the following fields of struct statvfs need to be supported:
 
    f_bsize   fill with what you call a block (typically 1024 bytes)
    f_blocks  fill with the total number of blocks in the filesystem
    f_bfree   fill with the free number of blocks in the filesystem
    f_bavail  fill with same value as f_bfree
-   f_namemax fill with your maximum file/directory name, if your
-             filesystem has such a maximum
+   f_namemax fill with your maximum file/directory name, if your filesystem has such a maximum
 */
 int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statvfs* stbuf)
 {
