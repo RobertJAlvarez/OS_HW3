@@ -587,8 +587,8 @@ void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld,
   memcpy(node->name, name, strlen(name)); //Copy given name into node->name, memcpy(dst,src,n_bytes)
   node->is_file = 0;
   update_time(node, 1);
-  directory_t dict = node->type.directory;
-  dict.number_children = ((size_t) 1);  //We use the first child space for '..'
+  directory_t *dict = &node->type.directory;
+  dict->number_children = ((size_t) 1);  //We use the first child space for '..'
 
   //Get linked list pointer header
   List *LL = get_free_memory_ptr(fsptr);
@@ -596,7 +596,7 @@ void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld,
   __off_t *ptr = ((__off_t *) __malloc_impl(LL, max_chld*sizeof(__off_t)));
   //TODO: Check that ptr was allocated with the amount wanted or more, but not less
   //Save the offset to get to the children
-  dict.children = ptr_to_off(fsptr, ptr);
+  dict->children = ptr_to_off(fsptr, ptr);
   //Set first children to point to its parent
   *ptr = parent_off_t;
 }
@@ -757,6 +757,57 @@ node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens)
   }
 
   return node;
+}
+
+void free_file_info(void *fsptr, file_t *file)
+{
+  file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
+  file_block_t *next;
+  List *LL = get_free_memory_ptr(fsptr);
+
+  //Iterate over all blocks until a block is pointing to fsptr meaning that we are done
+  while (((void *) block) != fsptr) {
+    //Free block data information
+    __free_impl(LL, off_to_ptr(fsptr, block->data));
+    //Save next block pointer
+    next = off_to_ptr(fsptr, block->next_file_block);
+    //Free current block
+    __free_impl(LL, block);
+    //Update current block with the next file_t for the next iteration
+    block = next;
+  }
+}
+
+void remove_node(void *fsptr, directory_t *dict, node_t *file_node)
+{
+  //TODO: Iterate over the files in dict and remove the file_node which we assume to be already free by calling free_file_info with &file_node->type.file
+  size_t n_children = dict->number_children;
+  __off_t *children = off_to_ptr(fsptr, dict->children);
+  size_t idx;
+  __off_t file_node_off = ptr_to_off(fsptr, file_node);
+
+  //Find the idx where the node is at
+  for (idx = 1; idx < n_children; idx++) {
+    if (children[idx] == file_node_off) {
+      break;
+    }
+  }
+
+  //File must be at idx
+  List *LL = get_free_memory_ptr(fsptr);
+  __free_impl(LL, file_node);
+
+  //Move the remaining nodes one to the left to cover the file_node remove
+  for ( ; idx < n_children-1; idx++) {
+    children[idx] = children[idx+1];
+  }
+
+  //Set the last to have offset of zero and update number of children
+  children[idx] = ((__off_t) 0);
+  dict->number_children--;
+
+  //See if we can free some memory by half while keeping at least 4 offsets
+  //TODO:
 }
 /* End of helper functions */
 
@@ -944,9 +995,9 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
   memcpy(file_node->name, filename, len); //Copy given name into node->name, memcpy(dst,src,n_bytes)
   node->is_file = 1;
   update_time(node, 1);
-  file_t file = node->type.file;
-  file.total_size = 0;
-  file.first_file_block = 0;
+  file_t *file = &node->type.file;
+  file->total_size = 0;
+  file->first_file_block = 0;
 
   //Add file node to directory children
   children[dict->number_children] = ptr_to_off(fsptr, file_node);
@@ -969,36 +1020,50 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   //Call path_solver with a 1 because we want the directory node where the filename belongs to
-  //TODO: Fix the algorithm
   node_t *node = path_solver(fsptr, path, 1);
 
+  //Check that the file parent exist
   if(node == NULL){
     *errnoptr = ENOENT;
     return -1;
   }
 
-  for (int i = 0; i < sizeof(node->name); i++){
-    //Check if the next char in the name is null character
-    if(node->name[i+1] == '\0'){
-      *errnoptr = EISDIR;
-      return -1;
-    }
-
-    //Check that the name does not have a forward slash
-    if(node->name[i] == '/'){
-      *errnoptr = EISDIR;
-      return -1;
-    }
-
-    //Check that the name is not greated than 256
-    if( (node->name[i] == ' ') && (node->name[i+1] == ' ') ) {
-      //Update number of children for directory
-      node->type.directory.number_children--;
-
-      //Update last time of modification
-      update_time(node, 1);
-    }
+  //Check that the node returned is a directory
+  if (node->is_file) {
+    //TODO: set errnoptr
+    return -1;
   }
+
+  //Get directory from node
+  directory_t *dict = &node->type.directory;
+
+  //Get last token which have the filename
+  unsigned long len;
+  char *filename = get_last_token(path, &len);
+
+  //Check that the parent don't contain a node with the same name as the one we are about to create
+  node_t *file_node = get_node(fsptr, dict, filename);
+
+  //Check that file_node is actually a file
+  if (file_node->is_file == 0) {
+    //Path given lead to a directory not a file
+    //TODO: set errnoptr
+    return -1;
+  }
+
+  //Free file information
+  file_t *file = &file_node->type.file;
+  if (file->total_size != 0) {
+    free_file_info(fsptr, file);
+  }
+
+  //Remove file_node from parent directory
+  remove_node(fsptr, dict, file_node);
+
+  //Free file_node
+  get_free_memory_ptr(fsptr);
+  __free_impl(get_free_memory_ptr(fsptr), file_node);
+
   return 0;
 }
 
