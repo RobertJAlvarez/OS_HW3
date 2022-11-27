@@ -165,49 +165,19 @@
    (18)  Run some heavy testing: copy your favorite movie into your filesystem and try to watch it out of the filesystem.
 */
 
-/* START __malloc_impl, realloc_impl, free_impl */
+/* START memory allocation implementations */
 
-// BEGINNING OF STRUCTS
-
-typedef struct s_AllocateFrom {
-  size_t remaining;
-  __off_t *next_space;
-} AllocateFrom;
-
-typedef struct s_List {
-  __off_t *first_space;
-} List;
-
-// END OF STRUCTS
-
-/* Memory allocation functions */
-void *__malloc_impl(void *fsptr, size_t size);
-void *__realloc_impl(void *fsptr, void *ptr, size_t size);
-void __free_impl(void *fsptr, void *ptr);
-/* End memory allocation functions */
-
-// BEGINNING OF HELPER FUNCTIONS DECLARATION
-
-/* Make an AllocateFrom item using length and start and add it to the list which does it in ascending order. */
-static void add_allocation_space(List *LL, AllocateFrom *new_space);
-
-/*
- */
-static void *get_allocation(List *LL, size_t size);
-
-// END OF HELPER FUNCTIONS DECLARATION
-
-static void add_allocation_space(List *LL, AllocateFrom *new_space)
+void add_allocation_space(List *LL, AllocateFrom *new_space)
 {
   //
 }
 
-static void *get_allocation(List *LL, size_t size)
+void *get_allocation(List *LL, size_t size)
 {
   return NULL;
 }
 
-void *__malloc_impl(List *LL, size_t size)
+void *__malloc_impl(void *fsptr, size_t size)
 {
   //
 
@@ -234,70 +204,11 @@ void __free_impl(void *fsptr, void *ptr)
   add_allocation_space(LL, temp);
 }
 
-/* END __malloc_impl, realloc_impl, free_impl */
+/* END memory allocation implementation */
 
 /* START of FUSE implementation */
 
-/* HELPER TYPES AND STRUCTS GO HERE */
-#define MYFS_MAGIC ((uint32_t) 0xCAFEBABE)
-#define NAME_MAX_LEN ((size_t) 255)
-
-typedef size_t __off_t;
-
-typedef struct __handler_t {
-  uint32_t magic;
-  __off_t root_dir;
-  __off_t free_memory;
-  size_t size;
-} handler_t;
-
-typedef struct __free_block_t {
-  size_t size;
-  __off_t next_block;
-} free_block_t;
-
-typedef struct __file_block_t {
-  size_t size;
-  size_t allocated;
-  __off_t data;
-  __off_t next_file_block;
-} file_block_t;
-
-typedef struct __inode_file_t {
-  size_t total_size;
-  __off_t first_file_block;  //This is an offset to the first file_block_t
-} file_t;
-
-typedef struct __inode_directory_t {
-  //Max number of children is given at the children array location - sizeof() divided by the sizeof(node_t *)
-  //This time the header of the block of memory is exclusive of the sizeof(size_t)
-  size_t number_children;
-  //children is an offset to an array of offsets to folders and files. Children starts with '..' offsets
-  __off_t children;
-} directory_t;
-
-typedef struct __times_t {
-  u_int second : 5;  //Do << 1 for a range max of 62
-  u_int minute : 6;  //0 < minutes < 63
-  u_int hour : 5;    //0 < hour < 31
-  u_int day : 5;     //0 < day < 31
-  u_int month : 4;   //0 < month < 15
-  u_int year : 7;    //1970 < year < 1970 + 127 = 2107
-} my_time;
-
-typedef struct __inode_t {
-  char name[NAME_MAX_LEN + ((size_t) 1)];
-  char is_file;
-  my_time times[2]; //times[0]: creation date, times[1]: last modification date
-  union {
-    file_t file;
-    directory_t directory;
-  } type;
-} node_t;
-
-/* End of types and structs */
-
-/* YOUR HELPER FUNCTIONS GO HERE */
+/* HELPER FUNCTIONS implementations */
 void *off_to_ptr(void *reference, __off_t offset)
 {
   void *ptr = reference + offset;
@@ -344,14 +255,16 @@ void update_time(node_t *node, int new_node)
   time(&ts);
   timeinfo = localtime(&ts);
 
-  //TODO: Check for errors
-  if (1) {
-    //Update last modification
-    set_time(timeinfo, &node->times[1]);
-    //Check if date of creation needs to be set
-    if (new_node) {
-      set_time(timeinfo, &node->times[0]);
-    }
+  if (timeinfo == NULL) {
+    //*errnoptr = errno;
+    return;
+  }
+
+  //Update last modification
+  set_time(timeinfo, &node->times[1]);
+  //Check if date of creation needs to be set
+  if (new_node) {
+    set_time(timeinfo, &node->times[0]);
   }
 }
 
@@ -411,18 +324,18 @@ void handler(void *fsptr, size_t fssize)
 char *get_last_token(const char *path, unsigned long *token_len)
 {
   unsigned long len = strlen(path);
-  unsigned long idx;
+  unsigned long index;
 
   //Find last '/' in path
-  for (idx = len-1; idx >= 0; idx--) {
-    if (path[idx] == '/') break;
+  for (index = len-1; index >= 0; index--) {
+    if (path[index] == '/') break;
   }
 
-  //idx is at '/' but we want to start a character after it
-  idx++;
+  //index is at '/' but we want to start a character after it
+  index++;
 
   //Set the length of the last node
-  *token_len = len-idx;
+  *token_len = len-index;
 
   //Make a copy of the last token
   void *ptr = malloc((*token_len+1)*sizeof(char));
@@ -433,7 +346,7 @@ char *get_last_token(const char *path, unsigned long *token_len)
   }
 
   char *copy = (char *) ptr;
-  strcpy(copy, &path[idx]); //strcpy(dst,src)
+  strcpy(copy, &path[index]); //strcpy(dst,src)
 
   //Add null character to terminate the string
   copy[*token_len] = '\0';
@@ -566,9 +479,10 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
     return NULL;
   }
 
-  //Check that the name is between 1 and 255 characters long
+  //Check that the name is between 1 and NAME_MAX_LEN characters long
   len = strlen(new_node_name);
-  if ( (len == 0) || (len > 255) ) {
+
+  if ( (len == 0) || (len > NAME_MAX_LEN) ) {
     //TODO: set errnoptr
     return NULL;
   }
@@ -648,26 +562,26 @@ void remove_node(void *fsptr, directory_t *dict, node_t *node)
   //TODO: Iterate over the files in dict and remove the file_node which we assume to be already free by calling free_file_info with &file_node->type.file
   size_t n_children = dict->number_children;
   __off_t *children = off_to_ptr(fsptr, dict->children);
-  size_t idx;
+  size_t index;
   __off_t node_off = ptr_to_off(fsptr, node);
 
-  //Find the idx where the node is at
-  for (idx = 1; idx < n_children; idx++) {
-    if (children[idx] == node_off) {
+  //Find the index where the node is at
+  for (index = 1; index < n_children; index++) {
+    if (children[index] == node_off) {
       break;
     }
   }
 
-  //File must be at idx
+  //File must be at index
   __free_impl(fsptr, node);
 
   //Move the remaining nodes one to the left to cover the node remove
-  for ( ; idx < n_children-1; idx++) {
-    children[idx] = children[idx+1];
+  for ( ; index < n_children-1; index++) {
+    children[index] = children[index+1];
   }
 
   //Set the last to have offset of zero and update number of children
-  children[idx] = ((__off_t) 0);
+  children[index] = ((__off_t) 0);
   dict->number_children--;
 
   //See if we can free some memory by half while keeping at least 4 offsets
@@ -992,7 +906,7 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   //Get the node where the file is located
   node_t *node = path_solver(fsptr, path, 0);
 
-  // Checks if path is valid, if not valid return -1
+  //Checks if path is valid, if not valid return -1
   if (node == NULL) {
     //TODO: Set errnoptr
     return -1;
@@ -1015,8 +929,66 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 */
 int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char *buf, size_t size, off_t offset)
 {
-  /* STUB */
-  return -1;
+  //Check that the offset is positive
+  if (offset < 0) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  size_t remaining = ((size_t) offset);
+  node_t *node = path_solver(fsptr, path, 0);
+
+  //Checks if path is valid, if not valid return -1
+  if (node == NULL) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  //If node is not a file we cannot read
+  if (!node->is_file) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  //Check that the file have more bytes than the remaining so we don't have to iterate it
+  file_t *file = &node->type.file;
+  if (file->total_size < remaining) {
+    //TODO: Check if reading 0 bytes is an error
+    return 0;
+  }
+
+  file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
+  size_t index;
+
+  while (remaining > 0) {
+    //If we are not getting information from this block
+    if (remaining >= block->size) {
+      remaining -= block->size;
+      block = off_to_ptr(fsptr, block->next_file_block);
+    }
+    //We are starting at this block
+    else {
+      index = remaining;
+      remaining = 0;
+    }
+  }
+
+  //We have the index to where to start reading so we start populating the buffer
+  size_t read_n_bytes = size > (block->allocated-index) ? (block->allocated-index) : size;
+  memcpy(buf, &off_to_ptr(fsptr, block->data)[index], read_n_bytes);
+  size -= read_n_bytes;
+  index = read_n_bytes;
+  block = off_to_ptr(fsptr, block->next_file_block);
+
+  while ( (size > 0) && (block != fsptr) ) {
+    read_n_bytes = size > block->allocated ? block->allocated : size;
+    memcpy(&buf[index], off_to_ptr(fsptr, block->data), read_n_bytes);
+    size -= read_n_bytes;
+    index += read_n_bytes;
+    block = off_to_ptr(fsptr, block->next_file_block);
+  }
+
+  return 0;
 }
 
 /* Implements an emulation of the write system call on the filesystem of size fssize pointed to by fsptr.
@@ -1032,7 +1004,35 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 */
 int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const char *buf, size_t size, off_t offset)
 {
-  /* STUB */
+  //Check that the offset is positive
+  if (offset < 0) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  size_t remaining = ((size_t) offset);
+  node_t *node = path_solver(fsptr, path, 0);
+
+  //Checks if path is valid, if not valid return -1
+  if (node == NULL) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  //If node is not a file we cannot read
+  if (!node->is_file) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  //Check that the file have more bytes than the remaining so we don't have to iterate it
+  file_t *file = &node->type.file;
+  if (file->total_size < remaining) {
+    //TODO: Check if reading 0 bytes is an error
+    return 0;
+  }
+
+  //TODO: continue
   return -1;
 }
 
@@ -1048,8 +1048,28 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 */
 int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const struct timespec ts[2])
 {
-  /* STUB */
-  return -1;
+  //First element is the access time and the second element is the last modification time
+
+  node_t *node = path_solver(fsptr, path, 0);
+
+  if (node == NULL) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  struct tm *timeinfo = localtime(&ts[1].tv_sec);
+
+  if (timeinfo == NULL) {
+    *errnoptr = errno;
+    return -1;
+  }
+
+  //Update last modification
+  set_time(timeinfo, &node->times[1]);
+
+  //TODO: We are not using the last access time, ts[1], check with Dr. Lauter if that is correct
+
+  return 0;
 }
 
 /* Implements an emulation of the statfs system call on the filesystem of size fssize pointed to by fsptr.
@@ -1072,8 +1092,41 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 */
 int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statvfs* stbuf)
 {
-  /* STUB */
-  return -1;
+  //Get the handler
+  handler_t *handler = ((handler_t *) fsptr);
+
+  //Populate what we call a block
+  stbuf->f_bsize = BLOCK_SIZE;
+
+  //Save how many block we have in our file system
+  stbuf->f_blocks = ((u_int) handler->size/BLOCK_SIZE);
+
+  //Set how many free number of blocks we have in our file system
+  //TODO: Check if by adding all the free memory spaces and diving it by a block size is good enough
+  // or if we need the number of free space that have BLOCK_SIZE of bytes free to use
+  size_t bytes_free = ((size_t) 0);
+  List *LL = get_free_memory_ptr(fsptr);
+  AllocateFrom *block;
+  void *temp;
+
+  //Iterate over all free block and get the amount of bytes that have not been used
+  for (temp = off_to_ptr(fsptr, LL->first_space); temp != fsptr; temp = off_to_ptr(fsptr, block->next_space)) {
+    block = temp - sizeof(size_t);
+    bytes_free += block->remaining + sizeof(size_t);
+  }
+
+  //Set the amount of free blocks
+  stbuf->f_bfree = ((u_int) bytes_free/BLOCK_SIZE);
+
+  //For us f_bavail is the same as f_bfree
+  stbuf->f_bavail = stbuf->f_bfree;
+
+  //Say what is the maximum word length that a node can have as
+  stbuf->f_namemax = NAME_MAX_LEN;
+
+  //TODO: Check what type of errors we can encounter an set errnoptr as appropriate
+
+  return 0;
 }
 
 /* END of FUSE implementation */

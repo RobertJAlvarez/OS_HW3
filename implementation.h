@@ -1,15 +1,119 @@
-#ifndef _MYFS_FUNCT_
-#define _MYFS_FUNCT_
+#ifndef __MY_FUSE_IMPL__
+#define __MY_FUSE_IMPL__
+
+/* Definitions and type declarations */
+
+#define MYFS_MAGIC ((uint32_t) 0xCAFEBABE)
+#define NAME_MAX_LEN ((size_t) 255)
+#define BLOCK_SIZE ((size_t) 1024)
 
 typedef unsigned int u_int;
+typedef size_t __off_t;
 
-/* Helper functions */
+// END of definitions and type declarations
+
+/* START memory allocation STRUCTS */
+
+typedef struct s_AllocateFrom {
+  size_t remaining;
+  __off_t next_space;
+} AllocateFrom;
+
+typedef struct s_List {
+  __off_t first_space;
+} List;
+
+// END OF STRUCTS
+
+/* START of fuse STRUCTS */
+
+typedef struct __handler_t {
+  uint32_t magic;
+  __off_t root_dir;
+  __off_t free_memory;
+  size_t size;
+} handler_t;
+
+typedef struct __free_block_t {
+  size_t size;
+  __off_t next_block;
+} free_block_t;
+
+typedef struct __file_block_t {
+  size_t size;
+  size_t allocated;
+  __off_t data;
+  __off_t next_file_block;
+} file_block_t;
+
+typedef struct __inode_file_t {
+  size_t total_size;
+  __off_t first_file_block;  //This is an offset to the first file_block_t
+} file_t;
+
+typedef struct __inode_directory_t {
+  //Max number of children is given at the children array location - sizeof() divided by the sizeof(node_t *)
+  //This time the header of the block of memory is exclusive of the sizeof(size_t)
+  size_t number_children;
+  //children is an offset to an array of offsets to folders and files. Children starts with '..' offsets
+  __off_t children;
+} directory_t;
+
+typedef struct __times_t {
+  u_int second : 5;  //Do << 1 for a range max of 62
+  u_int minute : 6;  //0 < minutes < 63
+  u_int hour : 5;    //0 < hour < 31
+  u_int day : 5;     //0 < day < 31
+  u_int month : 4;   //0 < month < 15
+  u_int year : 7;    //1970 < year < 1970 + 127 = 2107
+} my_time;
+
+typedef struct __inode_t {
+  char name[NAME_MAX_LEN + ((size_t) 1)];
+  char is_file;
+  my_time times[2]; //times[0]: creation date, times[1]: last modification date
+  union {
+    file_t file;
+    directory_t directory;
+  } type;
+} node_t;
+
+// END OF STRUCTS
+
+/* START memory allocation helper functions declarations */
+
+void *__malloc_impl(void *fsptr, size_t size);
+void *__realloc_impl(void *fsptr, void *ptr, size_t size);
+void __free_impl(void *fsptr, void *ptr);
+void add_allocation_space(List *LL, AllocateFrom *new_space);
+void *get_allocation(List *LL, size_t size);
+
+// END memory allocation functions
+
+/* START fuse helper functions */
+
+void *off_to_ptr(void *reference, __off_t offset);
+__off_t ptr_to_off(void *reference, void *ptr);
+void set_time(struct tm *timeinfo, my_time *t);
+void update_time(node_t *node, int new_node);
+List *get_free_memory_ptr(void *fsptr);
+//TODO: DELETE NEXT FUNCTION
+void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld, __off_t parent_off_t);
+void handler(void *fsptr, size_t fssize);
 char *get_last_token(const char *path, unsigned long *token_len);
 char **tokenize(const char token, const char *path, int skip_n_tokens);
+//TODO: Delete next function before turning in the project
 void print_tokens(char **tokens);
-/* End of helper functions */
+node_t *get_node(void *fsptr, directory_t *dict, const char *child);
+node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens);
+node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile);
+void free_file_info(void *fsptr, file_t *file);
+void remove_node(void *fsptr, directory_t *dict, node_t *node);
 
-/* Project functions */
+// END of fuse helper functions
+
+/* START fuse functions declarations */
+
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, gid_t gid, const char *path, struct stat *stbuf);
 int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char ***namesptr);
 int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path);
@@ -23,6 +127,7 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const char *buf, size_t size, off_t offset);
 int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const struct timespec ts[2]);
 int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statvfs* stbuf);
-/* End of project functions */
+
+//END of fuse function declarations
 
 #endif

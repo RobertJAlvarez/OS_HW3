@@ -1,12 +1,12 @@
 CC     = gcc
-OBJS   = main.o
+OBJS   = main.o implementation.o
 # -W* for warnings, -g3 for maximum debug, -O3 for maximum optimization
 CFLAGS = -g3 -O3 -Wall -Wextra -Wundef -Wshadow -Wwrite-strings -Wcast-align -Wstrict-prototypes -Waggregate-return -Wcast-qual \
          -Wswitch-default -Wswitch-enum -Wconversion -Wunreachable-code -Wfloat-equal -Wno-visibility -Wno-unused-parameter
 
 all: main
 
-main: $(OBJS) implementation.o
+main: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
 run: main
@@ -17,5 +17,5 @@ clean:
 	rm -f *.o main
 
 main.o: implementation.h
-implementation.o : implementation.h
+implementation.o: implementation.h
 
