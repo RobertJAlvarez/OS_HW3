@@ -5,11 +5,11 @@
 
 typedef struct s_AllocateFrom {
   size_t remaining;
-  __off_t *next_space;
+  __off_t next_space;
 } AllocateFrom;
 
 typedef struct s_List {
-  __off_t *first_space;
+  __off_t first_space;
 } List;
 
 // END OF STRUCTS
