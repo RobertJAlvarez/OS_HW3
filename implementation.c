@@ -867,7 +867,6 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
   
   stbuf->st_uid = uid;
   stbuf->st_gid = gid;
-  stbuf->st_mode = node->is_file ? S_IFREG : S_IFDIR;
 
   if (node->is_file) {
     stbuf->st_nlink = ((nlink_t) 1);
@@ -876,12 +875,11 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
     stbuf->st_mtimespec = node->times[1];
   }
   else {
+    stbuf->st_mode = S_IFDIR;
     directory_t *dict = &node->type.directory;
     __off_t *children = off_to_ptr(fsptr, dict->children);
     stbuf->st_nlink = 2;
     for (size_t i = 1; i < dict->number_children; i++) {
-      //TODO: Create variable for children (make them into pointers using off_to_ptr), 
-      //check wether the child is a file or a directory, only count for directories.
       if (!((node_t *) off_to_ptr(fsptr, children[i]))->is_file) {
         stbuf->st_nlink++;
       }
