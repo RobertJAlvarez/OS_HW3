@@ -956,6 +956,15 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 */
 int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char *buf, size_t size, off_t offset)
 {
+  //Check taht the offset is positive
+  if (offset < 0) {
+    //TODO: set errnoptr
+    return -1;
+  }
+
+  //off_t is signed but we already know that it is possitive so we change it to size_t
+  size_t remaining = ((size_t) offset);
+
   //Getting file node
   node_t *node = path_solver(fsptr, path, 0);
 
@@ -966,61 +975,45 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   }
 
   //Check that node is a file
-  if(node->is_file != 1) {
+  if(!node->is_file) {
     *errnoptr = EISDIR;
     return -1;
   }
 
-  if(node->type.file.total_size < offset) {
+  //Check that the file have more bytes than the remaining so we don't have to iterate it
+  file_t *file = &node->type.file;
+  if (file->total_size < remaining) {
     return 0; 
   }
   
-  file_block_t *block = off_to_ptr(fsptr, node->type.file.first_file_block);
+  file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
   size_t index;
 
-  while (offset != ((off_t)0)) {
-    if (offset > size) {
-      offset -= block->size;
+  while (remaining != ((off_t)0)) {
+    if (remaining > block->size) {
+      remaining -= block->size;
       block = off_to_ptr(fsptr, block->next_file_block);
     }
     else {
-      index = ((size_t) offset);
-      offset = 0;
+      index = remaining;
+      remaining = 0;
     }
   }
-  //The only bytes you need to read
-  size_t read_n_bytes;
 
-  if ((block->allocated - index) < size){
-    read_n_bytes = block->allocated - index;
-  }
-  else{
-    read_n_bytes = size;
-  }
-
+  //We have the index to where to start reading so we start populating the buffer
+  size_t read_n_bytes = size > (block->allocated-index) ? (block->allocated-index) : size;
   memcpy(buf, &off_to_ptr(fsptr,block->data)[index], read_n_bytes);
-  block = off_to_ptr(fsptr, block->next_file_block);
   size -= read_n_bytes;
   index = read_n_bytes;
+  block = off_to_ptr(fsptr, block->next_file_block);
 
-  while (size != ((size_t)0)) {
-    if (size > block->allocated) {
-      read_n_bytes = block->allocated;
-    }
-    else {
-      read_n_bytes = size;
-    }
+  while ( (size > ((size_t) 0)) && (block != fsptr) ) {
+    read_n_bytes = size > block->allocated ? block->allocated : size;
     memcpy(&buf[index], off_to_ptr(fsptr,block->data), read_n_bytes);
     //Update size to subtract what you already read
     size -= read_n_bytes;
     //Keeps track of where in the buffer we last wrote
     index += read_n_bytes; 
-
-    //When the next block is 0; break.
-    if (block->next_file_block == ((__off_t) 0) ) {
-      break;
-    }
-
     block = off_to_ptr(fsptr, block->next_file_block);
   }
 
