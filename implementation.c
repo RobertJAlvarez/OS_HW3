@@ -871,9 +871,9 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
 
   if (node->is_file) {
     stbuf->st_nlink = ((nlink_t) 1);
-    stbuf->st_size = node->type.file.total_size;
-    stbuf->st_atim = node->times[0];
-    stbuf->st_mtim = node->times[1];
+    stbuf->st_size = ((off_t) node->type.file.total_size);
+    stbuf->st_atimespec = node->times[0];
+    stbuf->st_mtimespec = node->times[1];
   }
   else {
     directory_t *dict = &node->type.directory;
@@ -882,7 +882,7 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
     for (size_t i = 1; i < dict->number_children; i++) {
       //TODO: Create variable for children (make them into pointers using off_to_ptr), 
       //check wether the child is a file or a directory, only count for directories.
-      if (!off_to_ptr(fsptr, children[i])->is_file) {
+      if (!((node_t *) off_to_ptr(fsptr, children[i]))->is_file) {
         stbuf->st_nlink++;
       }
     }
@@ -1153,6 +1153,12 @@ int __myfs_rename_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 */
 int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, off_t offset)
 {
+  if (offset < 0) {
+    //TODO: Check what needs to be done if offset is 0
+  }
+
+  size_t size = ((size_t) offset);
+
   //Get the node where the file is located
   node_t *node = path_solver(fsptr, path, 0);
 
@@ -1172,16 +1178,22 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
   file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
 
   //If the new size is the same we do nothing
-  if (file->total_size == offset) {
+  if (file->total_size == size) {
+    //File has not been modify, only access
+    update_time(node, 0);
     return 0;
   }
   //If the new size if less we make an AllocateFrom object (if possible) and send it to __free_impl()
-  else if (file->toatl_size > offset) {
-    //
+  else if (file->total_size > size) {
+    //File would be access and modify
+    update_time(node, 1);
+    //TODO:
   }
-  //Otherwise, the offset is greater than the previous size so we append 0's to it by calling __malloc_impl()
+  //Otherwise, the size is greater than the previous size so we append 0's to it by calling __malloc_impl()
   else {
-    //
+    //File would be access and modify
+    update_time(node, 1);
+    //TODO:
   }
 
   return 0;
@@ -1367,17 +1379,11 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
     return -1;
   }
 
-  struct tm *timeinfo = localtime(&ts[1].tv_sec);
-
-  if (timeinfo == NULL) {
-    *errnoptr = errno;
-    return -1;
-  }
+  //Update last access time
+  node->times[0] = ts[0];
 
   //Update last modification
-  set_time(timeinfo, &node->times[1]);
-
-  //TODO: We are not using the last access time, ts[1], check with Dr. Lauter if that is correct
+  node->times[1] = ts[1];
 
   return 0;
 }
