@@ -628,6 +628,8 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
   if (node->is_file) {
     stbuf->st_nlink = ((nlink_t) 1);
     stbuf->st_size = node->type.file.total_size;
+    stbuf->st_atim = node->times[0];
+    stbuf->st_mtim = node->times[1];
   }
   else {
     directory_t *dict = &node->type.directory;
@@ -642,7 +644,7 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
     }
   }
 
-  return -1;
+  return 0;
 }
 
 /* Implements an emulation of the readdir system call on the filesystem of size fssize pointed to by fsptr. 
