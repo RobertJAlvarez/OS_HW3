@@ -491,38 +491,19 @@ __off_t ptr_to_off(void *reference, void *ptr)
   return offset;
 }
 
-void set_time(struct tm *timeinfo, my_time *t)
-{
-  t->second = ((u_int) timeinfo->tm_sec >> 1);
-  t->minute = ((u_int) timeinfo->tm_min);
-  t->hour = ((u_int) timeinfo->tm_hour);
-  t->day = ((u_int) timeinfo->tm_mday);
-  t->month = ((u_int) timeinfo->tm_mon);
-  t->year = ((u_int) timeinfo->tm_year);
-}
-
-void update_time(node_t *node, int new_node)
+void update_time(node_t *node, int set_mod)
 {
   if (node == NULL) {
     return;
   }
 
-  time_t ts;
-  struct tm *timeinfo;
+  struct timespec ts;
 
-  time(&ts);
-  timeinfo = localtime(&ts);
-
-  if (timeinfo == NULL) {
-    //*errnoptr = errno;
-    return;
-  }
-
-  //Update last modification
-  set_time(timeinfo, &node->times[1]);
-  //Check if date of creation needs to be set
-  if (new_node) {
-    set_time(timeinfo, &node->times[0]);
+  if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+    node->times[0] = ts;
+    if (set_mod) {
+      node->times[1] = ts;
+    }
   }
 }
 

@@ -1,6 +1,8 @@
 #ifndef __MY_FUSE_IMPL__
 #define __MY_FUSE_IMPL__
 
+#include <time.h>
+
 /* Definitions and type declarations */
 
 #define MYFS_MAGIC ((uint32_t) 0xCAFEBABE)
@@ -54,19 +56,10 @@ typedef struct __inode_directory_t {
   __off_t children;
 } directory_t;
 
-typedef struct __times_t {
-  u_int second : 5;  //Do << 1 for a range max of 62
-  u_int minute : 6;  //0 < minutes < 63
-  u_int hour : 5;    //0 < hour < 31
-  u_int day : 5;     //0 < day < 31
-  u_int month : 4;   //0 < month < 15
-  u_int year : 7;    //1970 < year < 1970 + 127 = 2107
-} my_time;
-
 typedef struct __inode_t {
   char name[NAME_MAX_LEN + ((size_t) 1)];
   char is_file;
-  my_time times[2]; //times[0]: creation date, times[1]: last modification date
+  struct timespec times[2]; //times[0]: last access date, times[1]: last modification date
   union {
     file_t file;
     directory_t directory;
@@ -89,7 +82,6 @@ void *get_allocation(void *fsptr, List *LL, void *org_pref_ptr, size_t pref_to_b
 
 void *off_to_ptr(void *reference, __off_t offset);
 __off_t ptr_to_off(void *reference, void *ptr);
-void set_time(struct tm *timeinfo, my_time *t);
 void update_time(node_t *node, int new_node);
 List *get_free_memory_ptr(void *fsptr);
 void handler(void *fsptr, size_t fssize);
