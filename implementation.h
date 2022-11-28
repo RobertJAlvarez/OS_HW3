@@ -34,11 +34,6 @@ typedef struct __handler_t {
   size_t size;
 } handler_t;
 
-typedef struct __free_block_t {
-  size_t size;
-  __off_t next_block;
-} free_block_t;
-
 typedef struct __file_block_t {
   size_t size;
   size_t allocated;
@@ -82,11 +77,11 @@ typedef struct __inode_t {
 
 /* START memory allocation helper functions declarations */
 
-void *__malloc_impl(void *fsptr, size_t size);
-void *__realloc_impl(void *fsptr, void *ptr, size_t size);
-void __free_impl(void *fsptr, void *ptr);
-void add_allocation_space(List *LL, AllocateFrom *new_space);
-void *get_allocation(List *LL, size_t size);
+void *__malloc_impl(void *fsptr, void *pref_ptr, size_t pref_to_beginning, size_t *size);
+void *__realloc_impl(void *fsptr, void *orig_ptr, size_t *size);
+void __free_impl(void *fsptr, void *ptr, size_t off_to_beginning);
+void add_allocation_space(void *fspte, List *LL, AllocateFrom *alloc);
+void *get_allocation(void *fsptr, List *LL, void *org_pref_ptr, size_t pref_to_beginning, size_t *size);
 
 // END memory allocation functions
 
@@ -97,8 +92,6 @@ __off_t ptr_to_off(void *reference, void *ptr);
 void set_time(struct tm *timeinfo, my_time *t);
 void update_time(node_t *node, int new_node);
 List *get_free_memory_ptr(void *fsptr);
-//TODO: DELETE NEXT FUNCTION
-void make_dir_node(void *fsptr, node_t *node, const char *name, size_t max_chld, __off_t parent_off_t);
 void handler(void *fsptr, size_t fssize);
 char *get_last_token(const char *path, unsigned long *token_len);
 char **tokenize(const char token, const char *path, int skip_n_tokens);
