@@ -706,13 +706,13 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
 
   //Check that the file parent exist
   if (parent_node == NULL) {
-    //TODO: set errnoptr
+    *errnoptr = ENOENT;
     return NULL;
   }
 
   //Check that the node returned is a directory
   if (parent_node->is_file) {
-    //TODO: set errnoptr
+    *errnoptr = ENOTDIR;
     return NULL;
   }
 
@@ -723,9 +723,9 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
   unsigned long len;
   char *new_node_name = get_last_token(path,&len);
 
-  //Check that the parent don't contain a node with the same name as the one we are about to create
+  //Check that the parent doesn't contain a node with the same name as the one we are about to create
   if (get_node(fsptr,dict,new_node_name) != NULL) {
-    //TODO: set errnoptr
+    *errnoptr = EEXIST;
     return NULL;
   }
 
@@ -733,7 +733,8 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
   len = strlen(new_node_name);
 
   if ( (len == 0) || (len > NAME_MAX_LEN) ) {
-    //TODO: set errnoptr
+    //TODO: Ask Lauter how to handle if the name len is 0
+    *errnoptr = ENAMETOOLONG;
     return NULL;
   }
 
@@ -875,7 +876,31 @@ void remove_node(void *fsptr, directory_t *dict, node_t *node)
 */
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, gid_t gid, const char *path, struct stat *stbuf)
 {
-  /* STUB */
+  node_t *node = path_solver(fsptr, path, 0);
+
+  //Path could not be solved
+  if (node == NULL) {
+    *errnoptr = ENOENT;
+    return -1;
+  }
+   stbuf->st_uid = uid;
+   stbuf->st_gid = gid;
+
+  stbuf->st_mode = node->is_file ? S_IFREG : S_IFDIR;
+
+  if (node->is_file) {
+    stbuf->st_nlink = ((nlink_t) 1);
+  }
+  else {
+    directory_t *dict = &node->type.directory;
+    __off_t *children = off_to_ptr(fsptr, dict->children);
+    for (size_t i = 1; i < dict->number_children; i++) {
+      //TODO: Create variable for children (make them into pointers using off_to_ptr), 
+      //check wether the child is a file or a directory, only count for directories.
+
+    }
+  }
+
   return -1;
 }
 
@@ -906,13 +931,15 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 {
   node_t *node = path_solver(fsptr, path, 0);
 
-  //Path could not be solved, TODO: specify errnoptr
+  //Path could not be solved
   if (node == NULL) {
+    *errnoptr = ENOENT;
     return -1;
   }
 
-  //Check that the node is a directory, TODO: specify errnoptr
+  //Check that the node is a directory
   if (node->is_file) {
+    *errnoptr = ENOTDIR;
     return -1;
   }
 
@@ -995,7 +1022,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 
   //Check that the node returned is a directory
   if (node->is_file) {
-    //TODO: set errnoptr
+    *errnoptr = ENOTDIR;
     return -1;
   }
 
@@ -1012,7 +1039,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
   //Check that file_node is actually a file
   if (file_node->is_file == 0) {
     //Path given lead to a directory not a file
-    //TODO: set errnoptr
+    *errnoptr = EISDIR;
     return -1;
   }
 
@@ -1058,7 +1085,7 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 
   //Check that the node returned is not a file
   if (node->is_file) {
-    //TODO: set errnoptr
+    *errnoptr = ENOTDIR;
     return -1;
   }
 
@@ -1201,7 +1228,7 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 
   //Checks if path is valid, if not valid return -1
   if (node == NULL) {
-    //TODO: Set errnoptr
+    *errnoptr = ENOENT;
     return -1;
   }
 
@@ -1222,25 +1249,27 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 */
 int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char *buf, size_t size, off_t offset)
 {
-  //Check that the offset is positive
+  //Check taht the offset is positive
   if (offset < 0) {
-    //TODO: Set errnoptr
+    //TODO: set errnoptr
     return -1;
   }
 
   //off_t is signed but we already know that it is positive so we change it to size_t
   size_t remaining = ((size_t) offset);
+
+  //Getting file node
   node_t *node = path_solver(fsptr, path, 0);
 
-  //Checks if path is valid, if not valid return -1
-  if (node == NULL) {
-    //TODO: Set errnoptr
+  //Check if path is valid
+  if(node == NULL) {
+    *errnoptr = ENOENT;
     return -1;
   }
 
-  //If node is not a file we cannot read
-  if (!node->is_file) {
-    //TODO: Set errnoptr
+  //Check that node is a file
+  if(!node->is_file) {
+    *errnoptr = EISDIR;
     return -1;
   }
 
@@ -1249,17 +1278,16 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   if (file->total_size < remaining) {
     return 0;
   }
-
+  
   file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
   size_t index;
 
-  while (remaining != 0) {
+  while (remaining != ((off_t)0)) {
     //If we are not getting information from this block
     if (remaining >= block->size) {
       remaining -= block->size;
       block = off_to_ptr(fsptr, block->next_file_block);
     }
-    //We are starting at this block
     else {
       index = remaining;
       remaining = 0;
@@ -1268,7 +1296,7 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 
   //We have the index to where to start reading so we start populating the buffer
   size_t read_n_bytes = size > (block->allocated-index) ? (block->allocated-index) : size;
-  memcpy(buf, &off_to_ptr(fsptr, block->data)[index], read_n_bytes);
+  memcpy(buf, &off_to_ptr(fsptr,block->data)[index], read_n_bytes);
   size -= read_n_bytes;
   index = read_n_bytes;
   block = off_to_ptr(fsptr, block->next_file_block);
@@ -1301,7 +1329,7 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 {
   //Check that the offset is positive
   if (offset < 0) {
-    //TODO: Set errnoptr
+    *errnoptr = EFAULT;
     return -1;
   }
 
@@ -1310,20 +1338,20 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 
   //Checks if path is valid, if not valid return -1
   if (node == NULL) {
-    //TODO: Set errnoptr
+    *errnoptr = ENOENT;
     return -1;
   }
 
   //If node is not a file we cannot read
   if (!node->is_file) {
-    //TODO: Set errnoptr
+    *errnoptr = EISDIR;
     return -1;
   }
 
   //Check that the file have more bytes than the remaining so we don't have to iterate it
   file_t *file = &node->type.file;
   if (file->total_size < remaining) {
-    //TODO: Check if reading 0 bytes is an error
+    *errnoptr = EFBIG;
     return 0;
   }
 
@@ -1348,7 +1376,7 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
   node_t *node = path_solver(fsptr, path, 0);
 
   if (node == NULL) {
-    //TODO: Set errnoptr
+    *errnoptr = EINVAL;
     return -1;
   }
 
