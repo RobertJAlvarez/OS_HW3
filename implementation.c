@@ -14,7 +14,6 @@
                 ... 
                 ... and
                 ...
-
   and based on 
 
   FUSE: Filesystem in Userspace
@@ -1140,8 +1139,38 @@ int __myfs_rename_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 */
 int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, off_t offset)
 {
-  /* STUB */
-  return -1;
+  //Get the node where the file is located
+  node_t *node = path_solver(fsptr, path, 0);
+
+  //Checks if path is valid, if not valid return -1
+  if (node == NULL) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  //If node is not a file we cannot truncated
+  if (!node->is_file) {
+    //TODO: Set errnoptr
+    return -1;
+  }
+
+  file_t *file = &node->type.file;
+  file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
+
+  //If the new size is the same we do nothing
+  if (file->total_size == offset) {
+    return 0;
+  }
+  //If the new size if less we make an AllocateFrom object (if possible) and send it to __free_impl()
+  else if (file->toatl_size > offset) {
+    //
+  }
+  //Otherwise, the offset is greater than the previous size so we append 0's to it by calling __malloc_impl()
+  else {
+    //
+  }
+
+  return 0;
 }
 
 /* Implements an emulation of the open system call on the filesystem  of size fssize pointed to by fsptr, without actually performing
@@ -1199,6 +1228,7 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
     return -1;
   }
 
+  //off_t is signed but we already know that it is positive so we change it to size_t
   size_t remaining = ((size_t) offset);
   node_t *node = path_solver(fsptr, path, 0);
 
@@ -1217,14 +1247,13 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   //Check that the file have more bytes than the remaining so we don't have to iterate it
   file_t *file = &node->type.file;
   if (file->total_size < remaining) {
-    //TODO: Check if reading 0 bytes is an error
     return 0;
   }
 
   file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
   size_t index;
 
-  while (remaining > 0) {
+  while (remaining != 0) {
     //If we are not getting information from this block
     if (remaining >= block->size) {
       remaining -= block->size;
@@ -1244,10 +1273,12 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   index = read_n_bytes;
   block = off_to_ptr(fsptr, block->next_file_block);
 
-  while ( (size > 0) && (block != fsptr) ) {
+  while ( (size > ((size_t) 0)) && (block != fsptr) ) {
     read_n_bytes = size > block->allocated ? block->allocated : size;
     memcpy(&buf[index], off_to_ptr(fsptr, block->data), read_n_bytes);
+    //Update size to subtract what you already read
     size -= read_n_bytes;
+    //Keeps track of where in the buffer we last wrote
     index += read_n_bytes;
     block = off_to_ptr(fsptr, block->next_file_block);
   }
