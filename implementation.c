@@ -235,11 +235,9 @@ void add_allocation_space(void *fsptr, List *LL, AllocateFrom *alloc)
 /* Check if the offset for pref_ptr is 0, if so we get any block for size, otherwise we try to find the block after it and get as much from
  * it as possible and get the rest from the largest block
  */
-void *get_allocation(void *fsptr, List *LL, void *org_pref_ptr, size_t pref_to_beginning, size_t *size)
+void *get_allocation(void *fsptr, List *LL, AllocateFrom *org_pref, size_t *size)
 {
-  //org_pref_ptr is a ptr (needs -sizeof(size_t)) which we would like to find and use the block after it if it is on free memory
-  // There is no guarantee that it its offset is not 0, if so, we don't consider it
-  AllocateFrom *org_pref;
+  //There is no guarantee that its offset is not 0, if so, we don't consider it
   __off_t pref_off = ((__off_t) 0);
   AllocateFrom *before_pref;
   int pref_found = 0;
@@ -269,9 +267,8 @@ void *get_allocation(void *fsptr, List *LL, void *org_pref_ptr, size_t pref_to_b
     return NULL;
   }
 
-  if (org_pref_ptr != fsptr) {
-    org_pref = ((AllocateFrom *) (org_pref_ptr - pref_to_beginning));
-    pref_off = ptr_to_off(fsptr, org_pref_ptr) + org_pref->remaining;
+  if (((void *) org_pref) != fsptr) {
+    pref_off = ptr_to_off(fsptr, org_pref) + org_pref->remaining;
   }
 
   //We currently have before_temp as our largest block
@@ -383,13 +380,18 @@ void *get_allocation(void *fsptr, List *LL, void *org_pref_ptr, size_t pref_to_b
 }
 
 /* If size is zero, return NULL. Otherwise, call get_allocation with size. */
-void *__malloc_impl(void *fsptr, void *pref_ptr, size_t pref_to_beginning, size_t *size)
+void *__malloc_impl(void *fsptr, void *pref_ptr, size_t *size)
 {
   if (*size == ((size_t) 0)) {
     return NULL;
   }
 
-  return get_allocation(fsptr, get_free_memory_ptr(fsptr), pref_ptr, pref_to_beginning, size);
+  //If we don't have a prefer pointer we set it to be sizeof(size_t) so the get_allocation pointer is 0 again
+  if (pref_ptr == NULL) {
+    pref_ptr = fsptr + sizeof(size_t);
+  }
+
+  return get_allocation(fsptr, get_free_memory_ptr(fsptr), pref_ptr - sizeof(size_t), size);
 }
 
 /* If size is less than what already assign to *ptr just lock what is after size and add it using add_allocation_space. */
@@ -397,7 +399,7 @@ void *__realloc_impl(void *fsptr, void *orig_ptr, size_t *size)
 {
   //If size is 0, we free the ptr and return NULL
   if (*size == ((size_t) 0)) {
-    __free_impl(fsptr, orig_ptr, sizeof(size_t));
+    __free_impl(fsptr, orig_ptr);
     return NULL;
   }
 
@@ -406,7 +408,7 @@ void *__realloc_impl(void *fsptr, void *orig_ptr, size_t *size)
   //If ptr is fsptr if the offset was 0 (kind of pointing to null), realloc() is identical to a call to malloc() for size bytes.
   if (orig_ptr == fsptr) {
     //fsptr because we don't have a preference over the location of the pointer that would be returned, (offset of 0).
-    return get_allocation(fsptr, LL, fsptr, 0, size);
+    return get_allocation(fsptr, LL, fsptr, size);
   }
 
   AllocateFrom *alloc = (AllocateFrom *) (((void *) orig_ptr) - sizeof(size_t));
@@ -434,7 +436,7 @@ void *__realloc_impl(void *fsptr, void *orig_ptr, size_t *size)
   else {
     //Get new space to copy to
     // fsptr because we don't have a preference over the location of the pointer that would be returned, (offset of 0).
-    new_ptr = get_allocation(fsptr, LL, fsptr, 0, size);
+    new_ptr = get_allocation(fsptr, LL, fsptr, size);
     //We couldn't get enough space
     if (new_ptr == NULL) {
       return NULL;
@@ -449,17 +451,14 @@ void *__realloc_impl(void *fsptr, void *orig_ptr, size_t *size)
 }
 
 /* Add space back to List using add_allocation_space */
-void __free_impl(void *fsptr, void *ptr, size_t off_to_beginning)
+void __free_impl(void *fsptr, void *ptr)
 {
   if (ptr == NULL) {
     return;
   }
 
-  List *LL = get_free_memory_ptr(fsptr);
-
-  //Adjust ptr so size_t before to start on the size of pointer
-  AllocateFrom *temp = (AllocateFrom *) (ptr - off_to_beginning);
-  add_allocation_space(fsptr, LL, temp);
+  //Adjust ptr by size_t to start on the size of pointer
+  add_allocation_space(fsptr, get_free_memory_ptr(fsptr), ptr - sizeof(size_t));
 }
 
 /* END memory allocation implementation */
@@ -628,6 +627,13 @@ void print_tokens(char **tokens)
   }
 }
 
+void free_tokens(char **tokens)
+{
+  for (char **p = tokens; *p; p++)
+    free(*p);
+  free(tokens);
+}
+
 node_t *get_node(void *fsptr, directory_t *dict, const char *child)
 {
   size_t n_children = dict->number_children;
@@ -676,6 +682,8 @@ node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens)
       }
     }
   }
+
+  free_tokens(tokens);
 
   return node;
 }
@@ -734,15 +742,17 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
     //Check if malloc was successful
     if ( (block == NULL) || (((block->remaining)/sizeof(__off_t)) == dict->number_children) ) {
       //TODO: refuse to add the file
+      free(ask_size);
       return NULL;
     }
   }
 
   *ask_size = sizeof(node_t);
-  node_t *new_node = (node_t *) __malloc_impl(fsptr, fsptr, 0, ask_size);
+  node_t *new_node = (node_t *) __malloc_impl(fsptr, NULL, ask_size);
   if ( (ask_size != 0) || (new_node == NULL) ) {
-    __free_impl(fsptr, new_node, sizeof(node_t) + sizeof(size_t));
-    //TODO: refuse to make the node
+    __free_impl(fsptr, new_node);
+    *errnoptr = ENOSPC;
+    free(ask_size);
     return NULL;
   }
   memset(new_node->name, '\0', NAME_MAX_LEN + ((size_t) 1));  //File all name characters to '\0'
@@ -769,10 +779,11 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
 
     //Call __malloc_impl() to get enough space for 4 children
     *ask_size = 4*sizeof(__off_t);
-    __off_t *ptr = ((__off_t *) __malloc_impl(fsptr, fsptr, 0, ask_size));
+    __off_t *ptr = ((__off_t *) __malloc_impl(fsptr, NULL, ask_size));
     if ( (ask_size != 0) || (ptr == NULL) ) {
-      __free_impl(fsptr, ptr, sizeof(size_t));
-      //TODO: refuse to make the node
+      __free_impl(fsptr, ptr);
+      *errnoptr = ENOSPC;
+      free(ask_size);
       return NULL;
     }
     //Save the offset to get to the children
@@ -781,6 +792,7 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
     *ptr = ptr_to_off(fsptr, parent_node);
   }
 
+  free(ask_size);
   return new_node;
 }
 
@@ -792,11 +804,11 @@ void free_file_info(void *fsptr, file_t *file)
   //Iterate over all blocks until a block is pointing to fsptr meaning that we are done
   while (((void *) block) != fsptr) {
     //Free block data information
-    __free_impl(fsptr, off_to_ptr(fsptr, block->data), sizeof(size_t));
+    __free_impl(fsptr, off_to_ptr(fsptr, block->data));
     //Save next block pointer
     next = off_to_ptr(fsptr, block->next_file_block);
     //Free current block
-    __free_impl(fsptr, block, sizeof(file_block_t));
+    __free_impl(fsptr, block);
     //Update current block with the next file_t for the next iteration
     block = next;
   }
@@ -818,7 +830,7 @@ void remove_node(void *fsptr, directory_t *dict, node_t *node)
   }
 
   //File must be at index
-  __free_impl(fsptr, node, sizeof(node_t) + sizeof(size_t));
+  __free_impl(fsptr, node);
 
   //Move the remaining nodes one to the left to cover the node remove
   for ( ; index < n_children-1; index++) {
@@ -831,6 +843,50 @@ void remove_node(void *fsptr, directory_t *dict, node_t *node)
 
   //See if we can free some memory by half while keeping at least 4 offsets
   //TODO:
+}
+
+void remove_data(void *fsptr, file_block_t *block, size_t size)
+{
+  size_t remaining;
+  size_t idx;
+
+  //Find where we need to cut the file and free the rest
+  while (size != 0) {
+    //If we are not cutting on this block
+    if (size > block->allocated) {
+      remaining -= block->allocated;
+      block = off_to_ptr(fsptr, block->next_file_block);
+    }
+    else {
+      idx = remaining;
+      remaining = 0;
+    }
+  }
+
+  //Free the data starting at the idx, first you need to set the header with block->allocated - idx - sizeof(size_t)
+  //Make the header, if possible, and free it
+  if ( (idx + sizeof(AllocateFrom)) < block->allocated ) {
+    size_t *temp = &off_to_ptr(fsptr, block->data)[idx];
+    *temp = block->allocated - idx - sizeof(AllocateFrom);
+    //Our offset to the beginning is 0
+    __free_impl(fsptr, ((void *) temp) + sizeof(size_t));
+  }
+
+  //Free all date and block after this one
+  block = off_to_ptr(fsptr, block->next_file_block);
+  file_block_t *temp;
+
+  while (block != fsptr) {
+    //Free the data block
+    __free_impl(fsptr, off_to_ptr(fsptr, block->data));
+
+    //Get the next block before freeing the current block
+    temp = off_to_ptr(fsptr, block->next_file_block);
+    //Free the file_block
+    __free_impl(fsptr, block);
+    //Update the block pointer to the next one
+    block = temp;
+  }
 }
 /* End of helper functions */
 
@@ -864,11 +920,12 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
     *errnoptr = ENOENT;
     return -1;
   }
-  
+
   stbuf->st_uid = uid;
   stbuf->st_gid = gid;
 
   if (node->is_file) {
+    stbuf->st_mode = S_IFREG;
     stbuf->st_nlink = ((nlink_t) 1);
     stbuf->st_size = ((off_t) node->type.file.total_size);
     stbuf->st_atimespec = node->times[0];
@@ -878,7 +935,7 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
     stbuf->st_mode = S_IFDIR;
     directory_t *dict = &node->type.directory;
     __off_t *children = off_to_ptr(fsptr, dict->children);
-    stbuf->st_nlink = 2;
+    stbuf->st_nlink = ((nlink_t) 2);
     for (size_t i = 1; i < dict->number_children; i++) {
       if (!((node_t *) off_to_ptr(fsptr, children[i]))->is_file) {
         stbuf->st_nlink++;
@@ -936,7 +993,7 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 
   //Allocate space for all children, except "." and ".."
   size_t n_children = dict->number_children-((size_t) 1);
-  void **ptr = calloc(n_children, sizeof(char *));
+  void **ptr = (void **) calloc(n_children, sizeof(char *));
   __off_t *children = off_to_ptr(fsptr, dict->children);
 
   //Check that calloc call was successful
@@ -1038,7 +1095,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
   remove_node(fsptr, dict, file_node);
 
   //Free file_node
-  __free_impl(fsptr, file_node, sizeof(node_t) + sizeof(size_t));
+  __free_impl(fsptr, file_node);
 
   return 0;
 }
@@ -1059,7 +1116,6 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
   //We can access the parent directory as the first children of the return directory
-  //TODO: Fix the algorithm
   node_t *node = path_solver(fsptr, path, 0);
 
   //Check that the node exist
@@ -1086,8 +1142,8 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
   node_t *parent_node = off_to_ptr(fsptr, *children);
 
   //Free children of node and the node itself
-  __free_impl(fsptr, children, sizeof(size_t));
-  __free_impl(fsptr, node, sizeof(node_t) + sizeof(size_t));
+  __free_impl(fsptr, children);
+  __free_impl(fsptr, node);
 
   //Remove directory from parent directory
   remove_node(fsptr, &parent_node->type.directory, node);
@@ -1174,6 +1230,8 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 
   file_t *file = &node->type.file;
   file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
+  size_t initial_file_size = file->total_size;
+  size_t final_file_size = size;
 
   //If the new size is the same we do nothing
   if (file->total_size == size) {
@@ -1181,18 +1239,134 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
     update_time(node, 0);
     return 0;
   }
-  //If the new size if less we make an AllocateFrom object (if possible) and send it to __free_impl()
+  //If the new size is less, we make an AllocateFrom object (if possible) and send it to __free_impl()
   else if (file->total_size > size) {
     //File would be access and modify
     update_time(node, 1);
-    //TODO:
+
+    //Update total size of the file once the removal is done
+    file->total_size = size;
+
+    //Remove what is after the size byte starting at block
+    remove_data(fsptr, block, size);
   }
-  //Otherwise, the size is greater than the previous size so we append 0's to it by calling __malloc_impl()
+  //Otherwise, the new size is greater than current size, so we append 0's to it by calling __malloc_impl()
   else {
     //File would be access and modify
     update_time(node, 1);
-    //TODO:
+
+    //Some extra variables needed for later
+    file_block_t *prev_temp_block = NULL;
+    file_block_t *temp_block;
+    size_t new_data_block_size;
+
+    //Get the last block while keeping track of how many bytes are missing
+    size -= initial_file_size;
+    while (block->next_file_block != 0) {
+      block = off_to_ptr(fsptr, block->next_file_block);
+    }
+
+    //Get how many 0's you can append by only bringing the allocated and size attributes of the file_block_t closer
+    size_t append_n_bytes = (block->size - block->allocated) > size ? size : (block->size - block->allocated);
+    void *data_block = &off_to_ptr(fsptr, block->data)[block->allocated];
+
+    //Add 0's to the end of the block by extending the allocated bytes to the total size
+    memset(data_block, 0, append_n_bytes);
+    block->allocated += append_n_bytes;
+    size -= append_n_bytes;
+
+    //If we are done with getting the extra space we exit
+    if (size == 0) {
+      file->total_size = final_file_size;
+      return 0;
+    }
+
+    //Otherwise append blocks from __maloc_impl() until we have size bytes
+    size_t prev_size = block->allocated;
+    size_t *ask_size = (size_t *) malloc(sizeof(size_t));
+    *ask_size = size;
+
+    void *new_data_block = __malloc_impl(fsptr, data_block, ask_size);
+    block->size = *(((size_t *) data_block) -1);  //Update total size available in the data block
+
+    //If we don't get a block back and the *ask_size is not 0, it means that our file system don't have enough memory to even return one small block
+    if (new_data_block == NULL) {
+      //If we are not with the space and didn't got a block back it means that we cannot get the size requested
+      if (*ask_size != 0) {
+        *errnoptr = ENOSPC;
+        free(ask_size);
+        return -1;
+      }
+      //If ask_size is 0 it means that we got the space we wanted by extending the initial data block
+      else {
+        //Get how many out of the bytes appended are needed
+        append_n_bytes = (block->size - block->allocated >= size ? size : block->size - block->allocated);
+        memset(&off_to_ptr(fsptr, block->data)[prev_size], 0, append_n_bytes);
+        block->allocated += append_n_bytes;
+        size = 0;
+      }
+    }
+    //We did got a block back so we must append it
+    else {
+      //If the data block got extended, we didn't got everything from it
+      append_n_bytes = block->size - block->allocated;
+      memset(&off_to_ptr(fsptr, block->data)[prev_size], 0, append_n_bytes);
+      block->allocated += append_n_bytes;
+      size -= append_n_bytes;
+
+      size_t *temp_size = malloc(sizeof(size_t));
+      temp_block = block;
+
+      //Start connecting and collecting blocks until we are done collecting bytes or we fail to collect them all so we free them and fail
+      while (1) {
+        //Get the size of the block returned by __malloc_impl()
+        new_data_block_size = *(((size_t *) new_data_block) - 1);
+
+        //Save temp_block
+        if (prev_temp_block != NULL) {
+          prev_temp_block->next_file_block = ptr_to_off(fsptr, temp_block);
+        }
+
+        //Set the temp_block information
+        temp_block->size = new_data_block_size;
+        temp_block->allocated = *ask_size == 0 ? size : new_data_block_size;
+        temp_block->data = ptr_to_off(fsptr, new_data_block);
+        temp_block->next_file_block = ((__off_t) 0);
+
+        memset(new_data_block, 0, temp_block->allocated);
+        size -= temp_block->allocated;
+
+        prev_temp_block = temp_block;
+
+        //If we are done connecting block we exit it
+        if (size == 0) {
+          break;
+        }
+
+        //Call malloc to get another block of data
+        *ask_size = size;
+        new_data_block = __malloc_impl(fsptr, NULL, ask_size);
+        *temp_size = sizeof(file_block_t);
+        temp_block = __malloc_impl(fsptr, NULL, temp_size);
+
+        //Make sure that we got something out of the call
+        if ( (new_data_block == NULL) || (temp_block == NULL) || (*temp_size != 0) ) {
+          //Need to remove everything that got store, even the block extended
+          remove_data(fsptr, off_to_ptr(fsptr, file->first_file_block), initial_file_size);
+
+          *errnoptr = ENOSPC;
+          free(ask_size);
+          free(temp_size);
+          return -1;
+        }
+      }
+
+      free(temp_size);
+    }
+    free(ask_size);
   }
+
+  file->total_size = final_file_size;
 
   return 0;
 }
@@ -1279,9 +1453,9 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
   size_t index;
 
-  while (remaining != ((off_t)0)) {
+  while (remaining != 0) {
     //If we are not getting information from this block
-    if (remaining >= block->size) {
+    if (remaining > block->size) {
       remaining -= block->size;
       block = off_to_ptr(fsptr, block->next_file_block);
     }

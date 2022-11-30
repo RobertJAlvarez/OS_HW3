@@ -70,11 +70,11 @@ typedef struct __inode_t {
 
 /* START memory allocation helper functions declarations */
 
-void *__malloc_impl(void *fsptr, void *pref_ptr, size_t pref_to_beginning, size_t *size);
+void *__malloc_impl(void *fsptr, void *pref_ptr, size_t *size);
 void *__realloc_impl(void *fsptr, void *orig_ptr, size_t *size);
-void __free_impl(void *fsptr, void *ptr, size_t off_to_beginning);
+void __free_impl(void *fsptr, void *ptr);
 void add_allocation_space(void *fspte, List *LL, AllocateFrom *alloc);
-void *get_allocation(void *fsptr, List *LL, void *org_pref_ptr, size_t pref_to_beginning, size_t *size);
+void *get_allocation(void *fsptr, List *LL, AllocateFrom *org_pref, size_t *size);
 
 // END memory allocation functions
 
@@ -89,11 +89,13 @@ char *get_last_token(const char *path, unsigned long *token_len);
 char **tokenize(const char token, const char *path, int skip_n_tokens);
 //TODO: Delete next function before turning in the project
 void print_tokens(char **tokens);
+void free_tokens(char **tokens);
 node_t *get_node(void *fsptr, directory_t *dict, const char *child);
 node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens);
 node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile);
 void free_file_info(void *fsptr, file_t *file);
 void remove_node(void *fsptr, directory_t *dict, node_t *node);
+void remove_data(void *fsptr, file_block_t *block, size_t size);
 
 // END of fuse helper functions
 
