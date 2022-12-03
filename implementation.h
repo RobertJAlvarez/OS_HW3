@@ -2,6 +2,7 @@
 #define __MY_FUSE_IMPL__
 
 #include <time.h>
+#include <stdint.h>
 
 /* Definitions and type declarations */
 
@@ -10,7 +11,7 @@
 #define BLOCK_SIZE ((size_t) 1024)
 
 typedef unsigned int u_int;
-typedef size_t __off_t;
+typedef size_t __myfs_off_t;
 
 // END of definitions and type declarations
 
@@ -18,11 +19,11 @@ typedef size_t __off_t;
 
 typedef struct s_AllocateFrom {
   size_t remaining;
-  __off_t next_space;
+  __myfs_off_t next_space;
 } AllocateFrom;
 
 typedef struct s_List {
-  __off_t first_space;
+  __myfs_off_t first_space;
 } List;
 
 // END OF STRUCTS
@@ -31,21 +32,21 @@ typedef struct s_List {
 
 typedef struct __handler_t {
   uint32_t magic;
-  __off_t root_dir;
-  __off_t free_memory;
+  __myfs_off_t root_dir;
+  __myfs_off_t free_memory;
   size_t size;
 } handler_t;
 
 typedef struct __file_block_t {
   size_t size;
   size_t allocated;
-  __off_t data;
-  __off_t next_file_block;
+  __myfs_off_t data;
+  __myfs_off_t next_file_block;
 } file_block_t;
 
 typedef struct __inode_file_t {
   size_t total_size;
-  __off_t first_file_block;  //This is an offset to the first file_block_t
+  __myfs_off_t first_file_block;  //This is an offset to the first file_block_t
 } file_t;
 
 typedef struct __inode_directory_t {
@@ -53,7 +54,7 @@ typedef struct __inode_directory_t {
   //This time the header of the block of memory is exclusive of the sizeof(size_t)
   size_t number_children;
   //children is an offset to an array of offsets to folders and files. Children starts with '..' offsets
-  __off_t children;
+  __myfs_off_t children;
 } directory_t;
 
 typedef struct __inode_t {
@@ -80,10 +81,10 @@ void *get_allocation(void *fsptr, List *LL, AllocateFrom *org_pref, size_t *size
 
 /* START fuse helper functions */
 
-void *off_to_ptr(void *reference, __off_t offset);
-__off_t ptr_to_off(void *reference, void *ptr);
+void *off_to_ptr(void *reference, __myfs_off_t offset);
+__myfs_off_t ptr_to_off(void *reference, void *ptr);
 void update_time(node_t *node, int new_node);
-List *get_free_memory_ptr(void *fsptr);
+void *get_free_memory_ptr(void *fsptr);
 void handler(void *fsptr, size_t fssize);
 char *get_last_token(const char *path, unsigned long *token_len);
 char **tokenize(const char token, const char *path, int skip_n_tokens);
