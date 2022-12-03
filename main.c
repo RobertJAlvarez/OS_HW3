@@ -22,7 +22,13 @@ int main(void)
 
   printf("Last token: %s\n", last_token);
   printf("len: %lu =? strlen(last_token): %lu\n", len, strlen(last_token));
-*/
+
+  const char path2[6] = "/file";
+  printf("Full path: %s\n", path2);
+  tokens = tokenize('/', path2, 0);
+  for (char **token = tokens; *token; token++) {
+    printf("token = %s\n", *token);
+  }
 
 printf("sizeof(handler_t) = %zx\n", sizeof(handler_t));
 printf("sizeof(node_t) = %zx\n", sizeof(node_t));
@@ -31,7 +37,7 @@ printf("sizeof(file_t) = %zx\n", sizeof(file_t));
 printf("sizeof(file_block_t) = %zx\n", sizeof(file_block_t));
 printf("sizeof(size_t) = %zx\n", sizeof(size_t));
 printf("sizeof(struct timespec) = %zx\n\n", sizeof(struct timespec));
-
+*/
   size_t fssize = 2048;
   void *fsptr = mmap(NULL, fssize, PROT_WRITE|PROT_READ, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
 
@@ -40,7 +46,7 @@ printf("fssize = %zx\n", fssize);
     handler(fsptr, fssize);
     size_t *size = malloc(sizeof(size_t));
     *size = 0x10;
-    void *alloc = get_allocation(fsptr, get_free_memory_ptr(fsptr), fsptr, size);
+    void *alloc = __malloc_impl(fsptr, NULL, size);
 printf("fsptr = %p\n", fsptr);
 printf("alloc = %p\n", alloc);
 printf("alloc-fsptr = %zx\n", (alloc-fsptr));
@@ -51,7 +57,7 @@ printf("alloc-fsptr = %zx\n", (alloc-fsptr));
     printf("fb->next_space = %zx\n", fb->next_space);
 
     *size = 0x10;
-    void *alloc2 = get_allocation(fsptr, get_free_memory_ptr(fsptr), fsptr, size);
+    void *alloc2 = __malloc_impl(fsptr, alloc, size);
 printf("fsptr = %p\n", fsptr);
 printf("alloc2 = %p\n", alloc2);
 printf("alloc2-fsptr = %zx\n", (alloc2-fsptr));
