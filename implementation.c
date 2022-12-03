@@ -269,7 +269,6 @@ void *get_allocation(void *fsptr, List *LL, AllocateFrom *org_pref, size_t *size
 
   if (((void *) org_pref) != fsptr) {
     pref_off = ptr_to_off(fsptr, org_pref) + org_pref->remaining;
-printf("274: pref_off = %zx\n", pref_off);
     //Check that the first block is the prefer one or not
     if (pref_off == before_temp_off) {
       pref_found = 1;
@@ -624,10 +623,6 @@ char *get_last_token(const char *path, unsigned long *token_len)
 
 char **tokenize(const char token, const char *path, int skip_n_tokens)
 {
-  if (path[0] != '/') {
-    return NULL;
-  }
-
   int n_tokens = 0;
   for (const char *c = path; *c != '\0'; c++) {
     if (*c == token) {
@@ -680,7 +675,7 @@ node_t *get_node(void *fsptr, directory_t *dict, const char *child)
 {
   size_t n_children = dict->number_children;
   __myfs_off_t *children = off_to_ptr(fsptr, dict->children);
-  node_t *node;
+  node_t *node = NULL;
 
   //Check if we need to go the parent directory
   if (strcmp(child, "..") == 0) {
@@ -690,11 +685,10 @@ node_t *get_node(void *fsptr, directory_t *dict, const char *child)
   //We start from the second children because the first one is ".." (parent)
   for (size_t i = ((size_t) 1); i < n_children; i++) {
     node = ((node_t *) off_to_ptr(fsptr, children[i]));
-    if (strcmp(node->name, child)) {
+    if (strcmp(node->name, child) == 0) {
       return node;
     }
   }
-
   return NULL;
 }
 
@@ -707,17 +701,23 @@ node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens)
 
   //Get root directory
   node_t *node = off_to_ptr(fsptr, ((handler_t *) fsptr)->root_dir);
+
+  //If we only have "/" as the path, we return the root
+  if (path[1] == '\0') {
+    return node;
+  }
+
   //Break path into tokens
   char **tokens = tokenize('/', path, skip_n_tokens);
 
-  for (char *token = *tokens; token != NULL; token++) {
+  for (char **token = tokens; *token; token++) {
     //Files cannot have children
     if (node->is_file) {
       return NULL;
     }
     //If token is "." we stay on the same directory
-    if (strcmp(token, ".") != 0) {
-      node = get_node(fsptr, &node->type.directory, token);
+    if (strcmp(*token, ".") != 0) {
+      node = get_node(fsptr, &node->type.directory, *token);
       //Check that the child was successfully retrieved
       if (node == NULL) {
         return NULL;
@@ -760,16 +760,13 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
     return NULL;
   }
 
-  //Check that the name is between 1 and NAME_MAX_LEN characters long
-  len = strlen(new_node_name);
-
   if ( (len == 0) || (len > NAME_MAX_LEN) ) {
     //TODO: Ask Lauter how to handle if the name len is 0
     *errnoptr = ENAMETOOLONG;
     return NULL;
   }
 
-  __myfs_off_t *children = &dict->children;
+  __myfs_off_t *children = off_to_ptr(fsptr, dict->children);
   AllocateFrom *block = (((void *) children) - sizeof(size_t));
 
   //Make the node and put it in the directory child list
@@ -791,7 +788,7 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
 
   *ask_size = sizeof(node_t);
   node_t *new_node = (node_t *) __malloc_impl(fsptr, NULL, ask_size);
-  if ( (ask_size != 0) || (new_node == NULL) ) {
+  if ( (*ask_size != 0) || (new_node == NULL) ) {
     __free_impl(fsptr, new_node);
     *errnoptr = ENOSPC;
     free(ask_size);
@@ -822,7 +819,7 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
     //Call __malloc_impl() to get enough space for 4 children
     *ask_size = 4*sizeof(__myfs_off_t);
     __myfs_off_t *ptr = ((__myfs_off_t *) __malloc_impl(fsptr, NULL, ask_size));
-    if ( (ask_size != 0) || (ptr == NULL) ) {
+    if ( (*ask_size != 0) || (ptr == NULL) ) {
       __free_impl(fsptr, ptr);
       *errnoptr = ENOSPC;
       free(ask_size);
@@ -1017,6 +1014,7 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 {
   handler(fsptr, fssize);
 
+printf("1024: About to call path_solver()\n");
   node_t *node = path_solver(fsptr, path, 0);
 
   //Path could not be solved
@@ -1103,6 +1101,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 {
   handler(fsptr, fssize);
 
+printf("1111: About to call path_solver()\n");
   //Call path_solver with a 1 because we want the directory node where the filename belongs to
   node_t *node = path_solver(fsptr, path, 1);
 
@@ -1126,6 +1125,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
   char *filename = get_last_token(path, &len);
 
   //Check that the parent don't contain a node with the same name as the one we are about to create
+printf("1132: About to call get_node()\n");
   node_t *file_node = get_node(fsptr, dict, filename);
 
   //Check that file_node is actually a file
@@ -1167,6 +1167,7 @@ int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 {
   handler(fsptr, fssize);
 
+printf("1177: About to call path_solver()\n");
   //We can access the parent directory as the first children of the return directory
   node_t *node = path_solver(fsptr, path, 0);
 
@@ -1271,6 +1272,7 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 
   size_t size = ((size_t) offset);
 
+printf("1282: About to call path_solver()\n");
   //Get the node where the file is located
   node_t *node = path_solver(fsptr, path, 0);
 
@@ -1454,6 +1456,7 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 {
   handler(fsptr, fssize);
 
+printf("1466: About to call path_solver()\n");
   //Get the node where the file is located
   node_t *node = path_solver(fsptr, path, 0);
 
@@ -1491,6 +1494,7 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
   //off_t is signed but we already know that it is positive so we change it to size_t
   size_t remaining = ((size_t) offset);
 
+printf("1504: About to call path_solver()\n");
   //Getting file node
   node_t *node = path_solver(fsptr, path, 0);
 
@@ -1569,6 +1573,7 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
   }
 
   size_t remaining = ((size_t) offset);
+printf("1583: About to call path_solver()\n");
   node_t *node = path_solver(fsptr, path, 0);
 
   //Checks if path is valid, if not valid return -1
@@ -1610,6 +1615,7 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 
   //First element is the access time and the second element is the last modification time
 
+printf("1625: About to call path_solver()\n");
   node_t *node = path_solver(fsptr, path, 0);
 
   if (node == NULL) {
