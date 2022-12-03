@@ -367,16 +367,19 @@ printf("361: largest->remaining = %zx\n", largest->remaining);
     if (largest->remaining >= *size) {
       //Check if we can make an AllocateFrom object after getting size bytes from it
       if (largest->remaining > *size + sizeof(AllocateFrom)) {
+printf("370:\n");
         //Make the new AllocateFrom object
         temp = ((void *) largest) + sizeof(size_t) + *size; //
         temp->remaining = largest->remaining - *size - sizeof(size_t);
         temp->next_space = largest->next_space;
         //Update before_largest pointer, it may be the LL or a AllocateFrom
         if (before_largest == NULL) {
+printf("377:\n");
           //before_largest is the LL
           LL->first_space = largest_off + *size + sizeof(size_t);
         }
         else {
+printf("382:\n");
           //Update pointers to add temp list of free blocks
           before_largest->next_space = largest_off + *size + sizeof(size_t);
         }
@@ -385,6 +388,7 @@ printf("361: largest->remaining = %zx\n", largest->remaining);
       }
       //We can't make an AllocateFrom object so we get everything
       else {
+printf("391:\n");
         //Use everything that the largest block have
         if (before_largest != NULL) {
           before_largest->next_space = largest->next_space;
@@ -1035,9 +1039,9 @@ printf("1024: About to call path_solver()\n");
     return 0;
   }
 
+  size_t n_children = dict->number_children;
   //Allocate space for all children, except "." and ".."
-  size_t n_children = dict->number_children-((size_t) 1);
-  void **ptr = (void **) calloc(n_children, sizeof(char *));
+  void **ptr = (void **) calloc(n_children-((size_t) 1), sizeof(char *));
   __myfs_off_t *children = off_to_ptr(fsptr, dict->children);
 
   //Check that calloc call was successful
@@ -1047,15 +1051,18 @@ printf("1024: About to call path_solver()\n");
   }
 
   char **names = ((char **) ptr);
-
   //Fill array of names
+  size_t len;
   for (size_t i = ((size_t) 1); i < n_children; i++) {
     node = ((node_t *) off_to_ptr(fsptr, children[i]));
+    len = strlen(node->name);
+    names[i-1] = (char *) malloc(len+1);
     strcpy(names[i-1], node->name); //strcpy(dst,src)
+    names[i-1][len] = '\0';
   }
 
   *namesptr = names;
-  return ((int) n_children);
+  return ((int) (n_children-1));
 }
 
 /* Implements an emulation of the mknod system call for regular files on the filesystem of size fssize pointed to by fsptr.
