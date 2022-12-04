@@ -1536,10 +1536,10 @@ printf("1489: About to call path_solver()\n");
 
   //Check that the file have more bytes than the remaining so we don't have to iterate it
   file_t *file = &node->type.file;
-  if (file->total_size < remaining) {
+  if ( (file->total_size < remaining) || (file->total_size == 0) ) {
     return 0;
   }
-  
+
   file_block_t *block = off_to_ptr(fsptr, file->first_file_block);
   size_t index = 0;
 
