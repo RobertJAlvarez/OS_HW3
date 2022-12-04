@@ -882,6 +882,11 @@ void remove_node(void *fsptr, directory_t *dict, node_t *node)
 
 void remove_data(void *fsptr, file_block_t *block, size_t size)
 {
+  //Check that there is somewhere to remove bytes from
+  if (block == NULL) {
+    return;
+  }
+
   size_t idx = 0;
 
   //Find where we need to cut the file and free the rest
@@ -1317,21 +1322,49 @@ printf("1273: About to call path_solver()\n");
     file_block_t *prev_temp_block = NULL;
     file_block_t *temp_block;
     size_t new_data_block_size;
+    size_t ask_size;
+    size_t append_n_bytes;
+    void *data_block;
 
-    //Get the last block while keeping track of how many bytes are missing
-    size -= initial_file_size;
-    while (block->next_file_block != 0) {
-      block = off_to_ptr(fsptr, block->next_file_block);
+    //If our file have 0 bytes, we append the first one manually
+    if (((void *) block) == fsptr) {
+      ask_size = sizeof(file_block_t);
+      block = __malloc_impl(fsptr, NULL, &ask_size);
+      if (ask_size != 0) {
+        *errnoptr = ENOSPC;
+        return -1;
+      }
+      //Append the first file_block
+      file->first_file_block = ptr_to_off(fsptr, block);
+
+      //Add the first data block
+      ask_size = size;
+      data_block = __malloc_impl(fsptr, NULL, &ask_size);
+
+      //Set file_block characteristics
+      block->size = size - ask_size;
+      block->allocated = block->size;
+      block->data = ptr_to_off(fsptr, data_block);
+      block->next_file_block = 0;
+      size -= block->size;
     }
+    //Extend the last block by appending 0's
+    else {
+      //Get the last block while keeping track of how many bytes are missing
+      size -= initial_file_size;
+      while (block->next_file_block != 0) {
+        block = off_to_ptr(fsptr, block->next_file_block);
+      }
 
-    //Get how many 0's you can append by only bringing the allocated and size attributes of the file_block_t closer
-    size_t append_n_bytes = (block->size - block->allocated) > size ? size : (block->size - block->allocated);
-    void *data_block = &((char *) off_to_ptr(fsptr, block->data))[block->allocated];
+      //Get how many 0's you can append by only bringing the allocated and size attributes of the file_block_t closer
+      append_n_bytes = (block->size - block->allocated) > size ? size : (block->size - block->allocated);
+      data_block = &((char *) off_to_ptr(fsptr, block->data))[block->allocated];
 
-    //Add 0's to the end of the block by extending the allocated bytes to the total size
-    memset(data_block, 0, append_n_bytes);
-    block->allocated += append_n_bytes;
-    size -= append_n_bytes;
+      //Add 0's to the end of the block by extending the allocated bytes to the total size
+      memset(data_block, 0, append_n_bytes);
+      block->allocated += append_n_bytes;
+      size -= append_n_bytes;
+    }
 
     //If we are done with getting the extra space we exit
     if (size == 0) {
@@ -1341,7 +1374,6 @@ printf("1273: About to call path_solver()\n");
 
     //Otherwise append blocks from __maloc_impl() until we have size bytes
     size_t prev_size = block->allocated;
-    size_t ask_size;
     ask_size = size;
 
     void *new_data_block = __malloc_impl(fsptr, data_block, &ask_size);
