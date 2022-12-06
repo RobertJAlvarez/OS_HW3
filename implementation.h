@@ -97,6 +97,7 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile);
 void free_file_info(void *fsptr, file_t *file);
 void remove_node(void *fsptr, directory_t *dict, node_t *node);
 void remove_data(void *fsptr, file_block_t *block, size_t size);
+int add_data(void *fsptr, file_t *file, size_t size, int *errnoptr);
 
 // END of fuse helper functions
 
