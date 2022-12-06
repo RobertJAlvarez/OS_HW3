@@ -1669,7 +1669,7 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
     }
   }
 
-  char *data_block = &((char *) off_to_ptr(fsptr, block->data))[data_idx];
+  char *data_block = ((char *) off_to_ptr(fsptr, block->data));
   size_t buf_idx = 0;
   char copy[size+1];
   char c;
@@ -1693,12 +1693,11 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
         }
         //We put the last character on the current data block
         else {
-          data_block[data_idx+1] = '\0';
+          data_block[++data_idx] = '\0';
         }
         //We don't count the null character as a character use
-        block->allocated--;
-        block = fsptr;
-        break;
+        block->allocated = data_idx;
+        goto end;
       }
 
       //Update data_idx
@@ -1715,6 +1714,7 @@ int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
     buf_idx = 0;
   }
 
+end:
   //Update file total size
   file->total_size += size;
 
