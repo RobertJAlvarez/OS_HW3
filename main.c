@@ -5,6 +5,13 @@
 #include <sys/mman.h>
 #include "implementation.h"
 
+void print_tokens(char **tokens)
+{
+  for ( ; *tokens; tokens++) {
+    printf("%s\n", *tokens);
+  }
+}
+
 int main(void)
 {
   const char path[85] = "/Users/robertalvarez/OneDrive - University of Texas at El Paso/Fall_2022/CS_4375/HW3";
@@ -68,12 +75,5 @@ int main(void)
   }
 
   return 0;
-}
-
-void print_tokens(char **tokens)
-{
-  for ( ; *tokens; tokens++) {
-    printf("%s\n", *tokens);
-  }
 }
 

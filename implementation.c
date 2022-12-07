@@ -884,7 +884,22 @@ void remove_node(void *fsptr, directory_t *dict, node_t *node)
   dict->number_children--;
 
   //See if we can free some memory by half while keeping at least 4 offsets
-  //TODO:
+  size_t new_n_children = (*((size_t *) children) - 1)/sizeof(__myfs_off_t);  //Get the maximum number of children offset
+  new_n_children <<= 1; //Divide the maximum number by two
+
+  //Check if the new number of children is greater or equal than the current number, check that we always have 4 or more children spaces
+  // and that we can actually made an AllocateFrom object before making it
+  if ( (new_n_children >= dict->number_children) && (new_n_children*sizeof(__myfs_off_t) >= sizeof(AllocateFrom)) && (new_n_children >= 4) ){
+    //Every condition is meet, so we proceed to make an AlloacteFrom object and sent it to be added into the linked list of free blocks
+    AllocateFrom *temp = ((AllocateFrom *) &children[new_n_children]);
+    temp->remaining = new_n_children*sizeof(__myfs_off_t) - sizeof(size_t);
+    temp->next_space = 0;
+    __free_impl(fsptr, temp);
+
+    //Update the new size of the current directory children array of offsets
+    size_t *new_size = (((size_t *) children) - 1);
+    *new_size -= (temp->remaining - sizeof(size_t));
+  }
 }
 
 void remove_data(void *fsptr, file_block_t *block, size_t size)
