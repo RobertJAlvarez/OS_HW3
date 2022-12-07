@@ -660,13 +660,6 @@ char **tokenize(const char token, const char *path, int skip_n_tokens)
   return tokens;
 }
 
-void print_tokens(char **tokens)
-{
-  for ( ; *tokens; tokens++) {
-    printf("%s\n", *tokens);
-  }
-}
-
 void free_tokens(char **tokens)
 {
   for (char **p = tokens; *p; p++)
@@ -716,6 +709,7 @@ node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens)
   for (char **token = tokens; *token; token++) {
     //Files cannot have children
     if (node->is_file) {
+      free_tokens(tokens);
       return NULL;
     }
     //If token is "." we stay on the same directory
@@ -723,6 +717,7 @@ node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens)
       node = get_node(fsptr, &node->type.directory, *token);
       //Check that the child was successfully retrieved
       if (node == NULL) {
+        free_tokens(tokens);
         return NULL;
       }
     }
@@ -764,7 +759,7 @@ node_t *make_inode(void *fsptr, const char *path, int *errnoptr, int isfile)
   }
 
   if (len == 0) {
-    //TODO: Ask Lauter how to handle if the name len is 0
+    *errnoptr = ENOENT;
     return NULL;
   }
 
@@ -889,7 +884,22 @@ void remove_node(void *fsptr, directory_t *dict, node_t *node)
   dict->number_children--;
 
   //See if we can free some memory by half while keeping at least 4 offsets
-  //TODO:
+  size_t new_n_children = (*((size_t *) children) - 1)/sizeof(__myfs_off_t);  //Get the maximum number of children offset
+  new_n_children <<= 1; //Divide the maximum number by two
+
+  //Check if the new number of children is greater or equal than the current number, check that we always have 4 or more children spaces
+  // and that we can actually made an AllocateFrom object before making it
+  if ( (new_n_children >= dict->number_children) && (new_n_children*sizeof(__myfs_off_t) >= sizeof(AllocateFrom)) && (new_n_children >= 4) ){
+    //Every condition is meet, so we proceed to make an AlloacteFrom object and sent it to be added into the linked list of free blocks
+    AllocateFrom *temp = ((AllocateFrom *) &children[new_n_children]);
+    temp->remaining = new_n_children*sizeof(__myfs_off_t) - sizeof(size_t);
+    temp->next_space = 0;
+    __free_impl(fsptr, temp);
+
+    //Update the new size of the current directory children array of offsets
+    size_t *new_size = (((size_t *) children) - 1);
+    *new_size -= (temp->remaining - sizeof(size_t));
+  }
 }
 
 void remove_data(void *fsptr, file_block_t *block, size_t size)
@@ -1282,8 +1292,7 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
   node_t *file_node = get_node(fsptr, dict, filename);
 
   if (file_node == NULL) {
-    //file doesn't exist
-    //TODO: *errnoptr = ?
+    *errnoptr = ENOENT;
     return -1;
   }
   //Check that file_node is actually a file
@@ -1431,13 +1440,13 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 
   //Checks if path is valid, if not valid return -1
   if (node == NULL) {
-    //TODO: Set errnoptr
+    *errnoptr = ENOENT;
     return -1;
   }
 
   //If node is not a file we cannot truncated
   if (!node->is_file) {
-    //TODO: Set errnoptr
+    *errnoptr = EISDIR;
     return -1;
   }
 
@@ -1559,7 +1568,14 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 
   //Check that the file have more bytes than the remaining so we don't have to iterate it
   file_t *file = &node->type.file;
-  if ( (file->total_size < remaining) || (file->total_size == 0) ) {
+
+  //If we are trying to read outside the file size
+  if (remaining > file->total_size) {
+    *errnoptr = EFAULT;
+    return -1;
+  }
+
+  if (file->total_size == 0) {
     return 0;
   }
 
@@ -1775,6 +1791,12 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statvfs* stbuf)
 {
 //printf("1770\n");
+  //Check that stbuf is not NULL
+  if (stbuf == NULL) {
+    *errnoptr = EFAULT;
+    return -1;
+  }
+
   handler(fsptr, fssize);
 
   //Get the handler
@@ -1787,8 +1809,6 @@ int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statv
   stbuf->f_blocks = ((u_int) handler->size/BLOCK_SIZE);
 
   //Set how many free number of blocks we have in our file system
-  //TODO: Check if by adding all the free memory spaces and diving it by a block size is good enough
-  // or if we need the number of free space that have BLOCK_SIZE of bytes free to use
   size_t bytes_free = ((size_t) 0);
   List *LL = get_free_memory_ptr(fsptr);
   AllocateFrom *block;
@@ -1808,8 +1828,6 @@ int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statv
 
   //Say what is the maximum word length that a node can have as
   stbuf->f_namemax = NAME_MAX_LEN;
-
-  //TODO: Check what type of errors we can encounter an set errnoptr as appropriate
 
   return 0;
 }

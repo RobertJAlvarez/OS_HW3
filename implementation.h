@@ -50,8 +50,7 @@ typedef struct __inode_file_t {
 } file_t;
 
 typedef struct __inode_directory_t {
-  //Max number of children is given at the children array location - sizeof() divided by the sizeof(node_t *)
-  //This time the header of the block of memory is exclusive of the sizeof(size_t)
+  //Max number of children is given at the children array location - sizeof(size_t) divided by the sizeof(__myfs_off_t)
   size_t number_children;
   //children is an offset to an array of offsets to folders and files. Children starts with '..' offsets
   __myfs_off_t children;
@@ -88,8 +87,6 @@ void *get_free_memory_ptr(void *fsptr);
 void handler(void *fsptr, size_t fssize);
 char *get_last_token(const char *path, unsigned long *token_len);
 char **tokenize(const char token, const char *path, int skip_n_tokens);
-//TODO: Delete next function before turning in the project
-void print_tokens(char **tokens);
 void free_tokens(char **tokens);
 node_t *get_node(void *fsptr, directory_t *dict, const char *child);
 node_t *path_solver(void *fsptr, const char *path, int skip_n_tokens);
