@@ -1112,7 +1112,6 @@ int add_data(void *fsptr, file_t *file, size_t size, int *errnoptr)
 */
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, gid_t gid, const char *path, struct stat *stbuf)
 {
-//printf("1106\n");
   handler(fsptr, fssize);
 
   node_t *node = path_solver(fsptr, path, 0);
@@ -1173,7 +1172,6 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr, uid_t uid, 
 */
 int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char ***namesptr)
 {
-//printf("1167\n");
   handler(fsptr, fssize);
 
   node_t *node = path_solver(fsptr, path, 0);
@@ -1263,7 +1261,6 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr, const char *p
 */
 int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-//printf("1257\n");
   handler(fsptr, fssize);
 
   //Call path_solver with a 1 because we want the directory node where the filename belongs to
@@ -1329,7 +1326,6 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 */
 int __myfs_rmdir_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-//printf("1324\n");
   handler(fsptr, fssize);
 
   //We can access the parent directory as the first children of the return directory
@@ -1425,7 +1421,6 @@ int __myfs_rename_implem(void *fsptr, size_t fssize, int *errnoptr, const char *
 */
 int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, off_t offset)
 {
-//printf("1420\n");
   handler(fsptr, fssize);
 
   if (offset < 0) {
@@ -1510,7 +1505,6 @@ int __myfs_truncate_implem(void *fsptr, size_t fssize, int *errnoptr, const char
 */
 int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path)
 {
-//printf("1505\n");
   handler(fsptr, fssize);
 
   //Get the node where the file is located
@@ -1539,7 +1533,6 @@ int __myfs_open_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 */
 int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, char *buf, size_t size, off_t offset)
 {
-//printf("1534\n");
   handler(fsptr, fssize);
 
   //Check that the offset is positive
@@ -1630,7 +1623,6 @@ int __myfs_read_implem(void *fsptr, size_t fssize, int *errnoptr, const char *pa
 */
 int __myfs_write_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const char *buf, size_t size, off_t offset)
 {
-//printf("1618\n");
   handler(fsptr, fssize);
 
   //Check that the offset is positive
@@ -1749,7 +1741,6 @@ end:
 */
 int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char *path, const struct timespec ts[2])
 {
-//printf("1729\n");
   handler(fsptr, fssize);
 
   //First element is the access time and the second element is the last modification time
@@ -1790,7 +1781,6 @@ int __myfs_utimens_implem(void *fsptr, size_t fssize, int *errnoptr, const char 
 */
 int __myfs_statfs_implem(void *fsptr, size_t fssize, int *errnoptr, struct statvfs* stbuf)
 {
-//printf("1770\n");
   //Check that stbuf is not NULL
   if (stbuf == NULL) {
     *errnoptr = EFAULT;
