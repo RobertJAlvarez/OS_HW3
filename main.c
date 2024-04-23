@@ -13,7 +13,7 @@ void print_tokens(char **tokens) {
 }
 
 int main(void) {
-  const char path[85] =
+  const char path[] =
       "/Users/robertalvarez/OneDrive - University of Texas at El "
       "Paso/Fall_2022/CS_4375/HW3";
   printf("Full path: %s\n", path);
@@ -32,9 +32,7 @@ int main(void) {
   const char path2[6] = "/file";
   printf("Full path: %s\n", path2);
   tokens = tokenize('/', path2, 0);
-  for (char **token = tokens; *token; token++) {
-    printf("token = %s\n", *token);
-  }
+  for (char **token = tokens; *token; token++) printf("token = %s\n", *token);
 
   printf("sizeof(handler_t) = %zx\n", sizeof(handler_t));
   printf("sizeof(node_t) = %zx\n", sizeof(node_t));
@@ -59,8 +57,8 @@ int main(void) {
     printf("alloc = %p\n", alloc);
     printf("alloc-fsptr = %zx\n", (alloc - fsptr));
 
-    List *LL = (List *)get_free_memory_ptr(fsptr);
-    AllocateFrom *fb = off_to_ptr(fsptr, LL->first_space);
+    list_t *LL = (list_t *)get_free_memory_ptr(fsptr);
+    allocate_from_t *fb = off_to_ptr(fsptr, LL->first_space);
     printf("fb->remaining = %zx\n", fb->remaining);
     printf("fb->next_space = %zx\n", fb->next_space);
 

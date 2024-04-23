@@ -6,50 +6,47 @@
 
 /* Definitions and type declarations */
 
-#define MYFS_MAGIC ((uint32_t)0xCAFEBABE)
 #define NAME_MAX_LEN ((size_t)255)
-#define BLOCK_SIZE ((size_t)1024)
 
-typedef unsigned int u_int;
 typedef size_t __myfs_off_t;
 
 // END of definitions and type declarations
 
-/* START memory allocation STRUCTS */
+/* START of allocation STRUCTS */
 
-typedef struct s_AllocateFrom {
+typedef struct {
   size_t remaining;
   __myfs_off_t next_space;
-} AllocateFrom;
+} allocate_from_t;
 
-typedef struct s_List {
+typedef struct {
   __myfs_off_t first_space;
-} List;
+} list_t;
 
 // END OF STRUCTS
 
 /* START of fuse STRUCTS */
 
-typedef struct __handler_t {
+typedef struct {
   uint32_t magic;
   __myfs_off_t root_dir;
   __myfs_off_t free_memory;
   size_t size;
 } handler_t;
 
-typedef struct __file_block_t {
+typedef struct {
   size_t size;
   size_t allocated;
   __myfs_off_t data;
   __myfs_off_t next_file_block;
 } file_block_t;
 
-typedef struct __inode_file_t {
+typedef struct {
   size_t total_size;
   __myfs_off_t first_file_block;  // This is an offset to the first file_block_t
 } file_t;
 
-typedef struct __inode_directory_t {
+typedef struct {
   // Max number of children is given at the children array location -
   // sizeof(size_t) divided by the sizeof(__myfs_off_t)
   size_t number_children;
@@ -58,11 +55,11 @@ typedef struct __inode_directory_t {
   __myfs_off_t children;
 } directory_t;
 
-typedef struct __inode_t {
+typedef struct {
   char name[NAME_MAX_LEN + ((size_t)1)];
   char is_file;
-  struct timespec
-      times[2];  // times[0]: last access date, times[1]: last modification date
+  // times[0]: last access date, times[1]: last modification date
+  struct timespec times[2];
   union {
     file_t file;
     directory_t directory;
@@ -76,9 +73,6 @@ typedef struct __inode_t {
 void *__malloc_impl(void *fsptr, void *pref_ptr, size_t *size);
 void *__realloc_impl(void *fsptr, void *orig_ptr, size_t *size);
 void __free_impl(void *fsptr, void *ptr);
-void add_allocation_space(void *fspte, List *LL, AllocateFrom *alloc);
-void *get_allocation(void *fsptr, List *LL, AllocateFrom *org_pref,
-                     size_t *size);
 
 // END memory allocation functions
 
